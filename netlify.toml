@@ -56,11 +56,11 @@
 [context.production]
   [context.production.environment]
     NODE_ENV = "production"
-    NEXT_PUBLIC_SUPABASE_URL = "https://kjefreqibschtfdwyyfu.supabase.co"
-    NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY"
+    NEXT_PUBLIC_SUPABASE_URL = 'https://kjefreqibschtfdwyyfu.supabase.co'
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY'
 
 [context.deploy-preview]
   [context.deploy-preview.environment]
     NODE_ENV = "production"
-    NEXT_PUBLIC_SUPABASE_URL = https://kjefreqibschtfdwyyfu.supabase.co
-    NEXT_PUBLIC_SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY
+    NEXT_PUBLIC_SUPABASE_URL = 'https://kjefreqibschtfdwyyfu.supabase.co'
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY'

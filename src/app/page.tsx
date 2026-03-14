@@ -208,39 +208,16 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Database Login Info */}
+          {/* Login mode info - no credentials exposed */}
           <div className="p-4 mt-6 text-center border bg-blue-500/20 border-blue-500/50 rounded-xl">
             <p className="mb-2 font-medium text-blue-100">
               {isOnline ? "Online & Offline Login Supported" : "Offline Login Only"}
             </p>
             <p className="text-xs text-blue-200">
-              {isOnline 
+              {isOnline
                 ? "System will try online login first, then fallback to offline"
-                : "Using cached credentials for offline access"
-              }
+                : "Using cached credentials for offline access"}
             </p>
-            {isOnline && (
-              <div className="space-y-2 mt-3 text-xs">
-                <div className="flex justify-between text-night-200">
-                  <span>Super Admin:</span>
-                  <span className="font-mono">
-                    admin@onyxxnightlife.com / admin123
-                  </span>
-                </div>
-                <div className="flex justify-between text-night-200">
-                  <span>Cashier 1:</span>
-                  <span className="font-mono">
-                    cashier1@onyxxnightlife.com / cashier123
-                  </span>
-                </div>
-                <div className="flex justify-between text-night-200">
-                  <span>Cashier 2:</span>
-                  <span className="font-mono">
-                    cashier2@onyxxnightlife.com / cashier123
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

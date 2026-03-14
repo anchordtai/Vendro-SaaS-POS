@@ -15,7 +15,9 @@
     "build-installer": "npm run build && electron-builder --win --publish=never",
     "dist": "node build-electron.js",
     "build-pos": "npm run dist",
-    "build-simple": "node build-simple.js"
+    "build-simple": "node build-simple.js",
+    "deploy": "npm run build && npx netlify deploy --prod --dir=.next",
+    "deploy-preview": "npm run build && npx netlify deploy --dir=.next"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.8.0",

@@ -8,7 +8,7 @@
 
 [build.environment]
   # Set Node.js version
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
 
 # Redirect rules for proper routing
 [[redirects]]

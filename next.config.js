@@ -5,7 +5,6 @@ const nextConfig = {
     domains: ['localhost', 'images.unsplash.com'],
   },
   experimental: {
-    optimizePackageImports: ['tailwindcss'],
     optimizeCss: true,
     optimizeServerReact: true,
     esmExternals: true
@@ -15,13 +14,12 @@ const nextConfig = {
       ...config.resolve,
       alias: {
         '@': './src',
-      '@/lib': './src/lib',
+        '@/lib': './src/lib',
         '@/components': './src/components'
       }
     };
     return config;
   },
-  transpilePackages: ['tailwindcss'],
   compiler: {
     removeConsole: {
       exclude: ['error', 'warn']

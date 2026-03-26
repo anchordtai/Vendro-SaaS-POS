@@ -6,10 +6,13 @@ import AuthInitializer from "@/components/AuthInitializer";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Onyxx Nightlife POS",
-  description: "Point of Sale System for Nightlife Venues",
+  title: "Vendro SaaS POS",
+  description: "Multi-tenant Point of Sale System for diverse business types",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, title: "Onyxx POS" },
+  appleWebApp: { capable: true, title: "Vendro POS" },
+  other: {
+    'mobile-web-app-capable': 'yes'
+  }
 };
 
 export const viewport = {

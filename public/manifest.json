@@ -1,24 +1,10 @@
 {
-  "name": "Onyxx Nightlife POS",
-  "short_name": "Onyxx POS",
-  "description": "Point of Sale for restaurants and bars",
+  "name": "Vendro SaaS POS",
+  "short_name": "Vendro POS",
+  "description": "Multi-tenant Point of Sale System for diverse business types",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#6366f1",
-  "orientation": "any",
-  "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
+  "orientation": "any"
 }

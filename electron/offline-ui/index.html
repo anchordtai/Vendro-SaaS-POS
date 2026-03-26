@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:31337"
+    />
+    <title>Onyxx POS (Offline)</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #111a33;
+        --muted: #9aa3b2;
+        --text: #eef2ff;
+        --accent: #6366f1;
+        --danger: #ef4444;
+        --ok: #22c55e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+        background: radial-gradient(1200px 600px at 30% -10%, rgba(99,102,241,.35), transparent 60%), var(--bg);
+        color: var(--text);
+      }
+      header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08);
+        position: sticky; top: 0; background: rgba(11,16,32,.85); backdrop-filter: blur(10px);
+      }
+      .brand { display: flex; gap: 10px; align-items: center; }
+      .badge { font-size: 12px; color: #c7d2fe; background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.35); padding: 4px 8px; border-radius: 999px; }
+      .grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; padding: 12px; }
+      .card { background: rgba(17,26,51,.9); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 12px; }
+      .row { display: flex; gap: 10px; align-items: center; }
+      input, select, button {
+        font: inherit;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(255,255,255,.06);
+        color: var(--text);
+        padding: 10px 10px;
+        outline: none;
+      }
+      input::placeholder { color: rgba(238,242,255,.45); }
+      button { cursor: pointer; }
+      button.primary { background: var(--accent); border-color: rgba(99,102,241,.9); }
+      button.danger { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.5); color: #fecaca; }
+      button.ghost { background: transparent; }
+      .muted { color: var(--muted); }
+      .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 13px; }
+      th { color: #c7d2fe; font-weight: 600; }
+      .pill { padding: 3px 8px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(255,255,255,.12); }
+      .pill.ok { color: #bbf7d0; border-color: rgba(34,197,94,.5); background: rgba(34,197,94,.12); }
+      .pill.bad { color: #fecaca; border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.12); }
+      .cart-actions { display:flex; gap:10px; }
+      .kpi { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .kpi .card { padding: 10px; }
+      .kpi .value { font-size: 20px; font-weight: 700; }
+      .footer-note { padding: 0 12px 12px; color: rgba(238,242,255,.55); font-size: 12px; }
+      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; }
+      .overlay.open { display:flex; }
+      .modal { width: min(520px, 92vw); }
+      .hr { height: 1px; background: rgba(255,255,255,.08); margin: 10px 0; }
+      .right { text-align:right; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,.25);border:1px solid rgba(99,102,241,.35);display:flex;align-items:center;justify-content:center;font-weight:800;">
+          O
+        </div>
+        <div>
+          <div style="font-weight:800">Onyxx POS</div>
+          <div class="muted" style="font-size:12px">Offline Desktop Mode</div>
+        </div>
+      </div>
+      <div class="row">
+        <span id="licensePill" class="pill bad">License: Checking…</span>
+        <button class="ghost" id="btnSync">Sync</button>
+        <button class="ghost" id="btnReports">Reports</button>
+        <button class="ghost" id="btnSettings">License</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div style="font-weight:700">Products</div>
+          <div class="row">
+            <input id="search" placeholder="Search name/barcode…" style="width:260px" />
+            <button id="btnRefresh">Refresh</button>
+          </div>
+        </div>
+
+        <div class="split" style="margin-bottom:10px">
+          <input id="pName" placeholder="New product name" />
+          <input id="pBarcode" placeholder="Barcode (optional)" />
+          <input id="pPrice" placeholder="Price (₦)" inputmode="decimal" />
+          <input id="pStock" placeholder="Stock" inputmode="numeric" />
+          <input id="pCategory" placeholder="Category (optional)" />
+          <button class="primary" id="btnAddProduct">Add / Update</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th class="right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="productsBody"></tbody>
+        </table>
+      </section>
+
+      <aside class="card">
+        <div class="row" style="justify-content:space-between">
+          <div style="font-weight:700">Cart</div>
+          <button class="danger" id="btnClearCart">Clear</button>
+        </div>
+        <div class="hr"></div>
+        <table>
+          <thead>
+            <tr><th>Item</th><th>Qty</th><th class="right">Subtotal</th></tr>
+          </thead>
+          <tbody id="cartBody"></tbody>
+        </table>
+        <div class="hr"></div>
+        <div class="row" style="justify-content:space-between"><span class="muted">Subtotal</span><strong id="subtotal">₦0</strong></div>
+        <div class="row" style="justify-content:space-between"><span class="muted">Tax (5%)</span><strong id="tax">₦0</strong></div>
+        <div class="row" style="justify-content:space-between;font-size:18px"><span>Total</span><strong id="total">₦0</strong></div>
+        <div class="hr"></div>
+        <div class="cart-actions">
+          <button class="primary" style="flex:1" id="btnPayCash">Pay (Cash)</button>
+          <button class="primary" style="flex:1" id="btnPayCard">Pay (Card)</button>
+        </div>
+        <div class="footer-note">After payment: sale is saved to SQLite and receipt prints silently (if printer available).</div>
+      </aside>
+    </div>
+
+    <div class="overlay" id="modalOverlay">
+      <div class="card modal">
+        <div class="row" style="justify-content:space-between">
+          <div style="font-weight:800" id="modalTitle">Modal</div>
+          <button class="ghost" id="btnCloseModal">Close</button>
+        </div>
+        <div class="hr"></div>
+        <div id="modalBody"></div>
+      </div>
+    </div>
+
+    <script>
+      const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
+
+      const state = {
+        products: [],
+        cart: [],
+        licenseOk: false,
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      function openModal(title, bodyHtml) {
+        el("modalTitle").textContent = title;
+        el("modalBody").innerHTML = bodyHtml;
+        el("modalOverlay").classList.add("open");
+      }
+      function closeModal() {
+        el("modalOverlay").classList.remove("open");
+      }
+      el("btnCloseModal").onclick = closeModal;
+      el("modalOverlay").addEventListener("click", (e) => {
+        if (e.target === el("modalOverlay")) closeModal();
+      });
+
+      async function refreshLicense() {
+        const res = await window.electronAPI.checkLicense();
+        const pill = el("licensePill");
+        if (res.ok) {
+          state.licenseOk = true;
+          pill.className = "pill ok";
+          pill.textContent = `License: Active (expires ${new Date(res.license.expiresAt).toLocaleDateString()})`;
+        } else {
+          state.licenseOk = false;
+          pill.className = "pill bad";
+          pill.textContent = `License: ${res.status}`;
+        }
+      }
+
+      function requireLicense() {
+        if (state.licenseOk) return true;
+        openModal(
+          "Activation Required",
+          `
+            <p class="muted">This offline POS requires an active license key.</p>
+            <div class="row" style="margin-top:10px">
+              <input id="licenseKey" placeholder="Enter license key" style="flex:1" />
+              <button class="primary" id="btnActivate">Activate</button>
+            </div>
+            <p class="muted" style="margin-top:10px">If your license is expired, activation will renew for 1 year on this device.</p>
+          `
+        );
+        setTimeout(() => {
+          el("btnActivate").onclick = async () => {
+            const key = el("licenseKey").value;
+            const result = await window.electronAPI.activateLicense(key);
+            if (result.ok) {
+              closeModal();
+              await refreshLicense();
+            } else {
+              alert(result.message || "Activation failed");
+            }
+          };
+        }, 0);
+        return false;
+      }
+
+      async function loadProducts(q = "") {
+        const products = await window.electronAPI.listProducts(q);
+        state.products = products || [];
+        renderProducts();
+      }
+
+      function renderProducts() {
+        const tbody = el("productsBody");
+        tbody.innerHTML = "";
+        for (const p of state.products) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${p.name}${p.barcode ? `<div class="muted" style="font-size:11px">${p.barcode}</div>` : ""}</td>
+            <td>${fmt(p.price)}</td>
+            <td>${p.stock}</td>
+            <td class="right">
+              <button class="primary" data-add="${p.id}">Add</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+        tbody.querySelectorAll("button[data-add]").forEach((btn) => {
+          btn.onclick = () => addToCart(btn.getAttribute("data-add"));
+        });
+      }
+
+      function addToCart(productId) {
+        if (!requireLicense()) return;
+        const p = state.products.find((x) => x.id === productId);
+        if (!p) return;
+        if (p.stock <= 0) return alert("Out of stock");
+        const existing = state.cart.find((c) => c.product_id === p.id);
+        if (existing) existing.quantity += 1;
+        else state.cart.push({ product_id: p.id, product_name: p.name, price: p.price, quantity: 1 });
+        renderCart();
+      }
+
+      function renderCart() {
+        const tbody = el("cartBody");
+        tbody.innerHTML = "";
+        let subtotal = 0;
+        for (const c of state.cart) {
+          const line = c.quantity * c.price;
+          subtotal += line;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${c.product_name}</td>
+            <td>
+              <div class="row" style="gap:6px">
+                <button class="ghost" data-dec="${c.product_id}">-</button>
+                <strong>${c.quantity}</strong>
+                <button class="ghost" data-inc="${c.product_id}">+</button>
+                <button class="ghost" data-rm="${c.product_id}" title="Remove">✕</button>
+              </div>
+            </td>
+            <td class="right">${fmt(line)}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        tbody.querySelectorAll("button[data-dec]").forEach((b) => (b.onclick = () => updateQty(b.dataset.dec, -1)));
+        tbody.querySelectorAll("button[data-inc]").forEach((b) => (b.onclick = () => updateQty(b.dataset.inc, +1)));
+        tbody.querySelectorAll("button[data-rm]").forEach((b) => (b.onclick = () => removeItem(b.dataset.rm)));
+        const tax = subtotal * 0.05;
+        const total = subtotal + tax;
+        el("subtotal").textContent = fmt(subtotal);
+        el("tax").textContent = fmt(tax);
+        el("total").textContent = fmt(total);
+      }
+
+      function updateQty(productId, delta) {
+        const c = state.cart.find((x) => x.product_id === productId);
+        if (!c) return;
+        c.quantity += delta;
+        if (c.quantity <= 0) state.cart = state.cart.filter((x) => x.product_id !== productId);
+        renderCart();
+      }
+
+      function removeItem(productId) {
+        state.cart = state.cart.filter((x) => x.product_id !== productId);
+        renderCart();
+      }
+
+      el("btnClearCart").onclick = () => { state.cart = []; renderCart(); };
+      el("btnRefresh").onclick = () => loadProducts(el("search").value || "");
+      el("search").addEventListener("input", (e) => loadProducts(e.target.value || ""));
+
+      el("btnAddProduct").onclick = async () => {
+        if (!requireLicense()) return;
+        const name = el("pName").value.trim();
+        const barcode = el("pBarcode").value.trim();
+        const price = Number(el("pPrice").value);
+        const stock = Number(el("pStock").value);
+        const category = el("pCategory").value.trim();
+        if (!name) return alert("Name required");
+        const product = await window.electronAPI.upsertProduct({ name, barcode: barcode || null, price, stock, category: category || null });
+        el("pName").value = ""; el("pBarcode").value = ""; el("pPrice").value = ""; el("pStock").value = ""; el("pCategory").value = "";
+        await loadProducts();
+      };
+
+      async function checkout(method) {
+        if (!requireLicense()) return;
+        if (state.cart.length === 0) return alert("Cart is empty");
+        try {
+          const sale = await window.electronAPI.createSale({
+            cashier_name: "Offline Cashier",
+            payment_method: method,
+            items: state.cart,
+          });
+          // Print silently
+          await window.electronAPI.printReceipt(sale);
+          state.cart = [];
+          renderCart();
+          await loadProducts();
+          alert(`Payment successful! ${fmt(sale.total)} (Receipt ${sale.receipt_number})`);
+        } catch (e) {
+          alert(e?.message || "Payment failed");
+        }
+      }
+      el("btnPayCash").onclick = () => checkout("cash");
+      el("btnPayCard").onclick = () => checkout("pos_card");
+
+      el("btnReports").onclick = async () => {
+        const report = await window.electronAPI.reportToday();
+        const best = report.best_sellers?.map(b => `<li>${b.product_name} — <strong>${b.qty}</strong></li>`).join("") || "";
+        openModal("Today's Reports", `
+          <div class="kpi">
+            <div class="card"><div class="muted">Total Sales</div><div class="value">${fmt(report.total_sales)}</div></div>
+            <div class="card"><div class="muted">Transactions</div><div class="value">${report.total_transactions}</div></div>
+            <div class="card"><div class="muted">Range</div><div style="font-size:12px">${new Date(report.range.startIso).toLocaleDateString()} - ${new Date(report.range.endIso).toLocaleDateString()}</div></div>
+          </div>
+          <div class="hr"></div>
+          <div style="font-weight:700;margin-bottom:6px">Best sellers</div>
+          <ol>${best || "<li class='muted'>No sales yet</li>"}</ol>
+        `);
+      };
+
+      el("btnSync").onclick = async () => {
+        if (!requireLicense()) return;
+        const res = await window.electronAPI.syncData();
+        if (res.ok) {
+          alert(`Sync complete.\nProducts: ${res.pull?.pulled ?? 0}\nSales pushed: ${res.push?.pushed ?? 0}\n${res.push?.message ? "Note: " + res.push.message : ""}`);
+          await loadProducts();
+        } else {
+          alert(res.message || "Sync failed");
+        }
+      };
+
+      el("btnSettings").onclick = async () => {
+        const res = await window.electronAPI.checkLicense();
+        openModal("License", `
+          <p class="muted">Status: <strong>${res.status}</strong></p>
+          ${res.ok ? `<p class="muted">Expires: ${new Date(res.license.expiresAt).toLocaleString()}</p>` : ""}
+          <div class="row" style="margin-top:10px">
+            <input id="licenseKey2" placeholder="Enter license key" style="flex:1" />
+            <button class="primary" id="btnActivate2">Activate</button>
+          </div>
+        `);
+        setTimeout(() => {
+          el("btnActivate2").onclick = async () => {
+            const key = el("licenseKey2").value;
+            const result = await window.electronAPI.activateLicense(key);
+            if (result.ok) {
+              closeModal();
+              await refreshLicense();
+            } else {
+              alert(result.message || "Activation failed");
+            }
+          };
+        }, 0);
+      };
+
+      // Boot
+      (async () => {
+        await refreshLicense();
+        await loadProducts();
+        renderCart();
+      })();
+    </script>
+  </body>
+</html>
+

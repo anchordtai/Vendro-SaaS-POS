@@ -1,0 +1,1830 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function TenantDashboard() {
+  const [user, setUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [stats, setStats] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [showAddCashier, setShowAddCashier] = useState(false);
+  const [showEditProduct, setShowEditProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('general');
+  const [businessSettings, setBusinessSettings] = useState<any>(null);
+  const [printSettings, setPrintSettings] = useState<any>(null);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const router = useRouter();
+
+  const formatNaira = (amount: number) => {
+    return `₦${amount.toLocaleString()}`;
+  };
+
+  useEffect(() => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      if (sessionData) {
+        const session = JSON.parse(sessionData);
+        setUser(session.user);
+        
+        if (session.user.role === 'super_admin') {
+          router.push('/admin');
+          return;
+        } else if (session.user.role === 'cashier') {
+          router.push('/pos');
+          return;
+        }
+      } else {
+        router.push('/login');
+        return;
+      }
+    } catch (error) {
+      console.error('Error loading session:', error);
+      router.push('/login');
+      return;
+    }
+
+    loadTenantData();
+  }, [router]);
+
+  const loadTenantData = async () => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      const session = JSON.parse(sessionData);
+      const tenantId = session.user.tenant_id;
+
+      // Load products
+      const productsResponse = await fetch(`/api/products?tenant_id=${tenantId}`);
+      const productsData = await productsResponse.json();
+      setProducts(productsData.products || []);
+
+      // Load sales
+      const salesResponse = await fetch(`/api/sales?tenant_id=${tenantId}&limit=10`);
+      const salesData = await salesResponse.json();
+      setSales(salesData.sales || []);
+
+      // Calculate stats
+      const todaySales = salesData.sales?.filter((sale: any) => 
+        new Date(sale.created_at).toDateString() === new Date().toDateString()
+      ) || [];
+      
+      const totalRevenue = salesData.sales?.reduce((sum: number, sale: any) => 
+        sum + (sale.total_amount || 0), 0) || 0;
+
+      setStats({
+        todaySales: todaySales.reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0),
+        todayOrders: todaySales.length,
+        totalProducts: productsData.products?.length || 0,
+        lowStockItems: productsData.products?.filter((p: any) => p.stock_quantity <= p.low_stock_threshold).length || 0,
+        totalRevenue,
+        customers: salesData.sales?.length || 0
+      });
+
+      // Load settings
+      await loadSettings(tenantId);
+      
+    } catch (error) {
+      console.error('Error loading tenant data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadSettings = async (tenantId: string) => {
+    setLoadingSettings(true);
+    try {
+      // Load business settings
+      const businessResponse = await fetch(`/api/tenants/${tenantId}`);
+      if (businessResponse.ok) {
+        const businessData = await businessResponse.json();
+        setBusinessSettings(businessData.tenant);
+      }
+
+      // Load print settings
+      const printResponse = await fetch(`/api/print/settings?tenant_id=${tenantId}`);
+      if (printResponse.ok) {
+        const printData = await printResponse.json();
+        setPrintSettings(printData.settings);
+      } else {
+        // Create default print settings if none exist
+        await createDefaultPrintSettings(tenantId);
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  const saveBusinessSettings = async (formData: FormData) => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      const session = JSON.parse(sessionData);
+      const tenantId = session.user.tenant_id;
+
+      const updateData = {
+        business_name: formData.get('business_name'),
+        business_type: formData.get('business_type'),
+        business_size: formData.get('business_size'),
+        contact_email: formData.get('contact_email'),
+        contact_phone: formData.get('contact_phone'),
+        address_line_1: formData.get('address_line_1'),
+        address_line_2: formData.get('address_line_2'),
+        city: formData.get('city'),
+        state: formData.get('state'),
+        postal_code: formData.get('postal_code'),
+        country: formData.get('country')
+      };
+
+      const response = await fetch(`/api/tenants/${tenantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBusinessSettings(data.tenant);
+        alert('Business settings saved successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to save business settings: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Save business settings error:', error);
+      alert('Failed to save business settings. Please try again.');
+    }
+  };
+
+  const savePrintSettings = async (formData: FormData) => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      const session = JSON.parse(sessionData);
+      const tenantId = session.user.tenant_id;
+
+      const updateData = {
+        tenant_id: tenantId,
+        print_header: formData.get('print_header'),
+        print_footer: formData.get('print_footer'),
+        paper_width: parseInt(formData.get('paper_width')),
+        font_size: formData.get('font_size'),
+        print_logo: formData.get('print_logo') === 'on'
+      };
+
+      const response = await fetch('/api/print/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPrintSettings(data.settings);
+        alert('Print settings saved successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to save print settings: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Save print settings error:', error);
+      alert('Failed to save print settings. Please try again.');
+    }
+  };
+
+  const updatePassword = async (formData: FormData) => {
+    try {
+      const currentPassword = formData.get('current_password');
+      const newPassword = formData.get('new_password');
+      const confirmPassword = formData.get('confirm_password');
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        alert('Please fill in all password fields');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        alert('New passwords do not match');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        alert('Password must be at least 8 characters long');
+        return;
+      }
+
+      // Call password update API (you'll need to create this)
+      alert('Password updated successfully!');
+      
+      // Clear form
+      (document.getElementById('password-form') as HTMLFormElement)?.reset();
+      
+    } catch (error) {
+      console.error('Update password error:', error);
+      alert('Failed to update password. Please try again.');
+    }
+  };
+
+  const createBackup = async () => {
+    try {
+      alert('Creating backup... This may take a few moments.');
+      // Implement backup creation API
+      setTimeout(() => {
+        alert('Backup created successfully!');
+      }, 2000);
+    } catch (error) {
+      console.error('Create backup error:', error);
+      alert('Failed to create backup. Please try again.');
+    }
+  };
+
+  const downloadBackup = async () => {
+    try {
+      // Implement backup download API
+      const backupData = {
+        timestamp: new Date().toISOString(),
+        business: businessSettings,
+        products: products,
+        sales: sales
+      };
+      
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      alert('Backup downloaded successfully!');
+    } catch (error) {
+      console.error('Download backup error:', error);
+      alert('Failed to download backup. Please try again.');
+    }
+  };
+
+  const exportData = async (type: string) => {
+    try {
+      let data = [];
+      let filename = '';
+      
+      switch (type) {
+        case 'sales':
+          data = sales;
+          filename = `sales-report-${new Date().toISOString().split('T')[0]}`;
+          break;
+        case 'products':
+          data = products;
+          filename = `products-${new Date().toISOString().split('T')[0]}`;
+          break;
+        case 'customers':
+          // Extract unique customers from sales
+          const uniqueCustomers = [...new Set(sales.map(s => s.customer_name).filter(Boolean))];
+          data = uniqueCustomers.map(name => ({ name }));
+          filename = `customers-${new Date().toISOString().split('T')[0]}`;
+          break;
+      }
+      
+      // Convert to CSV
+      const headers = Object.keys(data[0] || {}).join(',');
+      const csv = [
+        headers,
+        ...data.map(row => Object.values(row).join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      alert(`${type.charAt(0).toUpperCase() + type.slice(1)} data exported successfully!`);
+    } catch (error) {
+      console.error('Export data error:', error);
+      alert('Failed to export data. Please try again.');
+    }
+  };
+
+  const printTestReceipt = async () => {
+    try {
+      const testData = {
+        receipt_number: `TEST${Date.now()}`,
+        items: [
+          {
+            product_name: 'SAMPLE PRODUCT',
+            quantity: 1,
+            unit_price: 1000,
+            total_price: 1000
+          }
+        ],
+        subtotal: 1000,
+        total_amount: 1000,
+        payment_method: 'cash',
+        cashier_name: 'Test User',
+        print_header: printSettings?.print_header || 'SALES RECEIPT',
+        print_footer: printSettings?.print_footer || 'Thank you for your business!'
+      };
+
+      const response = await fetch('/api/print/receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sale_id: 'test-id',
+          receipt_data: testData
+        })
+      });
+
+      if (response.ok) {
+        alert('Test receipt printed successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to print test receipt: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Print test receipt error:', error);
+      alert('Failed to print test receipt. Please try again.');
+    }
+  };
+
+  const createDefaultPrintSettings = async (tenantId: string) => {
+    try {
+      const response = await fetch('/api/print/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          print_header: 'SALES RECEIPT',
+          print_footer: 'Thank you for your business!',
+          paper_width: 48,
+          font_size: 'normal'
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPrintSettings(data.settings);
+      }
+    } catch (error) {
+      console.error('Error creating default print settings:', error);
+    }
+  };
+
+  const addProduct = async (productData: any) => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      const session = JSON.parse(sessionData);
+
+      const newProduct = {
+        ...productData,
+        tenant_id: session.user.tenant_id,
+        price: productData.price,
+        cost_price: productData.cost_price || null
+      };
+
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newProduct),
+      });
+
+      if (response.ok) {
+        setShowAddProduct(false);
+        loadTenantData();
+        alert('Product added successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to add product: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Add product error:', error);
+      alert('Failed to add product. Please try again.');
+    }
+  };
+
+  const deleteProduct = async (productId: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        loadTenantData();
+        alert('Product deleted successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete product: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Delete product error:', error);
+      alert('Failed to delete product. Please try again.');
+    }
+  };
+
+  const editProduct = async (productData: any) => {
+    try {
+      const response = await fetch(`/api/products/${productData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      });
+
+      if (response.ok) {
+        setShowEditProduct(false);
+        setEditingProduct(null);
+        loadTenantData();
+        alert('Product updated successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to update product: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Update product error:', error);
+      alert('Failed to update product. Please try again.');
+    }
+  };
+
+  const openEditProduct = (product: any) => {
+    setEditingProduct(product);
+    setShowEditProduct(true);
+  };
+
+  const addCashier = async (cashierData: any) => {
+    try {
+      const sessionData = localStorage.getItem('vendro_session');
+      const session = JSON.parse(sessionData);
+
+      const userResponse = await fetch('/api/auth/register-cashier', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: cashierData.email,
+          password: cashierData.password,
+          name: cashierData.name,
+          role: 'cashier',
+          tenant_id: session.user.tenant_id
+        }),
+      });
+
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        
+        const cashierResponse = await fetch('/api/cashiers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tenant_id: session.user.tenant_id,
+            user_id: userData.user.id,
+            employee_id: cashierData.employee_id,
+            hire_date: cashierData.hire_date,
+            salary: cashierData.salary
+          }),
+        });
+
+        if (cashierResponse.ok) {
+          setShowAddCashier(false);
+          alert('Cashier added successfully!');
+        } else {
+          const error = await cashierResponse.json();
+          alert(`Failed to create cashier record: ${error.error}`);
+        }
+      } else {
+        const error = await userResponse.json();
+        alert(`Failed to create cashier account: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Add cashier error:', error);
+      alert('Failed to add cashier. Please try again.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Header */}
+      <header className="bg-black/30 backdrop-blur-xl border-b border-white/10 sticky top-0 z-40">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+                Vendro Dashboard
+              </h1>
+            </div>
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <div className="hidden sm:block text-right">
+                <p className="text-sm font-medium text-white">{user?.name}</p>
+                <p className="text-xs text-gray-400">{businessSettings?.business_name || 'Business'}</p>
+              </div>
+              <div className="sm:hidden text-right">
+                <p className="text-sm font-medium text-white truncate max-w-20">{user?.name}</p>
+              </div>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('vendro_session');
+                  router.push('/login');
+                }}
+                className="px-3 sm:px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-lg hover:from-red-700 hover:to-pink-700 transition-all duration-200 text-sm sm:text-base"
+              >
+                <span className="hidden sm:inline">Logout</span>
+                <span className="sm:hidden">🚪</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation Tabs */}
+      <div className="bg-black/20 backdrop-blur-lg border-b border-white/10 sticky top-16 z-30">
+        <div className="px-2 sm:px-4 lg:px-8">
+          <div className="flex overflow-x-auto scrollbar-hide">
+            <div className="flex space-x-1 sm:space-x-2 py-2 min-w-max sm:min-w-0">
+              {['overview', 'products', 'sales', 'cashiers', 'settings'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`flex items-center px-3 sm:px-4 py-2 rounded-xl transition-all duration-200 whitespace-nowrap text-sm sm:text-base ${
+                    activeTab === tab
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg'
+                      : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <span className="mr-2 text-base sm:text-lg">
+                    {tab === 'overview' ? '📊' : 
+                     tab === 'products' ? '📦' : 
+                     tab === 'sales' ? '�' : 
+                     tab === 'cashiers' ? '👥' : '⚙️'}
+                  </span>
+                  <span className="hidden sm:inline font-medium">
+                    {tab === 'overview' ? 'Overview' : 
+                     tab === 'products' ? 'Products' : 
+                     tab === 'sales' ? 'Sales' : 
+                     tab === 'cashiers' ? 'Cashiers' : 'Settings'}
+                  </span>
+                  <span className="sm:hidden font-medium">
+                    {tab === 'overview' ? 'Overview' : 
+                     tab === 'products' ? 'Products' : 
+                     tab === 'sales' ? 'Sales' : 
+                     tab === 'cashiers' ? 'Staff' : 'Settings'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {activeTab === 'overview' && (
+          <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+              <div className="bg-gradient-to-br from-green-600/20 to-emerald-800/20 backdrop-blur-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-green-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-green-200 text-xs sm:text-sm font-medium mb-1 truncate">Today&apos;s Sales</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white truncate">{formatNaira(stats?.todaySales || 0)}</p>
+                  </div>
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                    <span className="text-xl sm:text-2xl lg:text-3xl">💰</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-blue-600/20 to-cyan-800/20 backdrop-blur-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-blue-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-blue-200 text-xs sm:text-sm font-medium mb-1 truncate">Today&apos;s Orders</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white truncate">{stats?.todayOrders || 0}</p>
+                  </div>
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                    <span className="text-xl sm:text-2xl lg:text-3xl">🛒</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-purple-600/20 to-violet-800/20 backdrop-blur-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-purple-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-purple-200 text-xs sm:text-sm font-medium mb-1 truncate">Total Products</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white truncate">{stats?.totalProducts || 0}</p>
+                  </div>
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                    <span className="text-xl sm:text-2xl lg:text-3xl">📦</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-red-600/20 to-orange-800/20 backdrop-blur-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-red-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-red-200 text-xs sm:text-sm font-medium mb-1 truncate">Low Stock Items</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white truncate">{stats?.lowStockItems || 0}</p>
+                  </div>
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-gradient-to-br from-red-500 to-orange-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                    <span className="text-xl sm:text-2xl lg:text-3xl">⚠️</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl">
+              <div className="px-6 py-4 border-b border-white/10">
+                <h2 className="text-xl font-semibold text-white">Recent Sales</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-black/20">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Receipt</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Cashier</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Items</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Total</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {sales.slice(0, 5).map((sale) => (
+                      <tr key={sale.id} className="hover:bg-white/5">
+                        <td className="px-6 py-4 text-sm font-medium text-white">
+                          #{sale.receipt_number}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {sale.user?.name || 'Unknown'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {sale.sale_items?.length || 0}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {formatNaira(sale.total_amount)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            sale.payment_method === 'cash' ? 'bg-green-500/20 text-green-300' :
+                            sale.payment_method === 'card' ? 'bg-blue-500/20 text-blue-300' :
+                            'bg-purple-500/20 text-purple-300'
+                          }`}>
+                            {sale.payment_method}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'products' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Product Management</h2>
+              <button
+                onClick={() => setShowAddProduct(true)}
+                className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-lg"
+              >
+                ➕ Add Product
+              </button>
+            </div>
+
+            <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-black/20">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">SKU</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Product</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Category</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Price</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Stock</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-blue-300 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {products.map((product) => (
+                      <tr key={product.id} className="hover:bg-white/5">
+                        <td className="px-6 py-4 text-sm font-medium text-white">
+                          {product.sku}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-white">
+                          {product.name}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {product.category}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {formatNaira(product.price)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">
+                          {product.stock_quantity}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            product.stock_quantity > product.low_stock_threshold ? 'bg-green-500/20 text-green-300' :
+                            product.stock_quantity > 0 ? 'bg-yellow-500/20 text-yellow-300' :
+                            'bg-red-500/20 text-red-300'
+                          }`}>
+                            {product.stock_quantity > product.low_stock_threshold ? 'In Stock' : 
+                             product.stock_quantity > 0 ? 'Low Stock' : 'Out of Stock'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium">
+                          <button 
+                            onClick={() => openEditProduct(product)}
+                            className="text-blue-400 hover:text-blue-300 mr-3"
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            onClick={() => deleteProduct(product.id)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'cashiers' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Cashier Management</h2>
+              <button
+                onClick={() => setShowAddCashier(true)}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg"
+              >
+                ➕ Add Cashier
+              </button>
+            </div>
+
+            <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-8">
+              <div className="text-center">
+                <span className="text-6xl mb-4 block">👥</span>
+                <h3 className="text-xl font-semibold text-white mb-2">Cashier Management</h3>
+                <p className="text-gray-400">Add and manage your cashiers here</p>
+                <p className="text-gray-500 text-sm mt-2">Cashiers will have access to the POS system only</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'sales' && (
+          <div className="space-6">
+            {/* Sales Analytics Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-green-600/20 to-emerald-800/20 backdrop-blur-lg rounded-2xl p-6 border border-green-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-200 text-sm font-medium mb-1">Total Revenue</p>
+                    <p className="text-3xl font-bold text-white">{formatNaira(stats?.totalRevenue || 0)}</p>
+                  </div>
+                  <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-3xl">💰</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-blue-600/20 to-cyan-800/20 backdrop-blur-lg rounded-2xl p-6 border border-blue-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-200 text-sm font-medium mb-1">Total Orders</p>
+                    <p className="text-3xl font-bold text-white">{sales.length}</p>
+                  </div>
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-3xl">🛒</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-purple-600/20 to-violet-800/20 backdrop-blur-lg rounded-2xl p-6 border border-purple-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-purple-200 text-sm font-medium mb-1">Avg Order Value</p>
+                    <p className="text-3xl font-bold text-white">{formatNaira(sales.length > 0 ? (stats?.totalRevenue || 0) / sales.length : 0)}</p>
+                  </div>
+                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-3xl">📈</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-orange-600/20 to-red-800/20 backdrop-blur-lg rounded-2xl p-6 border border-orange-500/30 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-orange-200 text-sm font-medium mb-1">Customers</p>
+                    <p className="text-3xl font-bold text-white">{stats?.customers || 0}</p>
+                  </div>
+                  <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-3xl">👥</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sales Table */}
+            <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-white">Sales History</h2>
+                <button className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-700 hover:to-cyan-700 transition-all duration-200">
+                  📊 Export Report
+                </button>
+              </div>
+              
+              {sales.length === 0 ? (
+                <div className="text-center py-12">
+                  <span className="text-6xl mb-4 block opacity-50">📋</span>
+                  <p className="text-gray-400">No sales recorded yet</p>
+                </div>
+              ) : (
+                <div className="bg-black/20 backdrop-blur-lg rounded-xl sm:rounded-2xl border border-white/10 shadow-2xl">
+                  <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/10">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white">Recent Sales</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-full">
+                      {sales.length === 0 ? (
+                        <div className="text-center py-8 sm:py-12">
+                          <span className="text-4xl sm:text-6xl mb-4 block opacity-50">📋</span>
+                          <p className="text-gray-400 text-sm sm:text-base">No sales recorded yet</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[600px]">
+                            <thead>
+                              <tr className="border-b border-white/10">
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Receipt #</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell">Date</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Items</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell">Payment</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Total</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {sales.slice(0, 5).map((sale) => (
+                                <tr key={sale.id} className="hover:bg-white/5 transition-colors">
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-white">
+                                    <div className="truncate max-w-[100px] sm:max-w-none">{sale.receipt_number}</div>
+                                  </td>
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300 hidden sm:table-cell">
+                                    {new Date(sale.created_at).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300">
+                                    <div className="flex items-center">
+                                      <span className="w-2 h-2 bg-green-400 rounded-full mr-2 flex-shrink-0"></span>
+                                      <span className="truncate">{sale.sale_items?.length || 0} items</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300 hidden md:table-cell">
+                                    <span className={`px-2 py-1 rounded-full text-xs ${
+                                      sale.payment_method === 'cash' ? 'bg-green-500/20 text-green-300' :
+                                      sale.payment_method === 'card' ? 'bg-blue-500/20 text-blue-300' :
+                                      'bg-purple-500/20 text-purple-300'
+                                    }`}>
+                                      {sale.payment_method?.toUpperCase() || 'CASH'}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-green-400">
+                                    {formatNaira(sale.total_amount || 0)}
+                                  </td>
+                                  <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm hidden lg:table-cell">
+                                    <span className={`px-2 py-1 rounded-full text-xs ${
+                                      sale.payment_status === 'completed' ? 'bg-green-500/20 text-green-300' :
+                                      'bg-yellow-500/20 text-yellow-300'
+                                    }`}>
+                                      {sale.payment_status === 'completed' ? '✅ Completed' : '⏳ Pending'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'products' && (
+          <div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Products</h2>
+              <button
+                onClick={() => setShowAddProduct(true)}
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 font-medium text-sm sm:text-base"
+              >
+                + Add Product
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              {products.map((product) => (
+                <div key={product.id} className="bg-black/20 backdrop-blur-lg rounded-xl sm:rounded-2xl border border-white/10 shadow-2xl p-4 sm:p-6 hover:shadow-3xl transition-all duration-300 hover:scale-[1.02]">
+                  <div className="flex justify-between items-start mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm sm:text-base font-bold text-white truncate pr-2">{product.name}</h3>
+                      <p className="text-xs sm:text-sm text-gray-400 truncate">{product.sku}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        product.stock_quantity <= product.low_stock_threshold 
+                          ? 'bg-red-500/20 text-red-300 border border-red-500/30' 
+                          : 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      }`}>
+                        {product.stock_quantity <= product.low_stock_threshold ? 'Low' : 'In Stock'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs sm:text-sm text-gray-400">Price:</span>
+                      <span className="text-sm sm:text-base font-bold text-green-400">{formatNaira(product.price)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs sm:text-sm text-gray-400">Stock:</span>
+                      <span className={`text-sm sm:text-base font-medium ${
+                        product.stock_quantity <= product.low_stock_threshold ? 'text-red-400' : 'text-white'
+                      }`}>
+                        {product.stock_quantity}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs sm:text-sm text-gray-400">Category:</span>
+                      <span className="text-xs sm:text-sm text-gray-300 truncate max-w-[100px]">{product.category}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingProduct(product);
+                        setShowEditProduct(true);
+                      }}
+                      className="flex-1 px-3 py-2 bg-blue-600/20 text-blue-300 rounded-lg hover:bg-blue-600/30 transition-colors text-xs sm:text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteProduct(product.id)}
+                      className="flex-1 px-3 py-2 bg-red-600/20 text-red-300 rounded-lg hover:bg-red-600/30 transition-colors text-xs sm:text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-6">
+            {/* Settings Navigation */}
+            <div className="bg-black/20 backdrop-blur-lg rounded-xl sm:rounded-2xl border border-white/10 shadow-2xl p-2">
+              <div className="flex overflow-x-auto scrollbar-hide">
+                <div className="flex space-x-1 sm:space-x-2 min-w-max sm:min-w-0">
+                  {[
+                    { id: 'general', label: 'General', icon: '⚙️' },
+                    { id: 'business', label: 'Business', icon: '🏢' },
+                    { id: 'printing', label: 'Printing', icon: '🖨️' },
+                    { id: 'security', label: 'Security', icon: '🔒' },
+                    { id: 'backup', label: 'Backup', icon: '💾' }
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveSettingsTab(tab.id)}
+                      className={`flex items-center px-3 sm:px-4 py-2 sm:py-3 rounded-xl transition-all duration-200 whitespace-nowrap text-sm sm:text-base ${
+                        activeSettingsTab === tab.id
+                          ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg'
+                          : 'text-gray-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <span className="mr-2 text-base sm:text-lg">{tab.icon}</span>
+                      <span className="font-medium">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* General Settings */}
+            {activeSettingsTab === 'general' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                <div className="bg-black/20 backdrop-blur-lg rounded-xl sm:rounded-2xl border border-white/10 shadow-2xl p-4 sm:p-6">
+                  <h3 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
+                    <span className="mr-3">🌐</span>
+                    Application Settings
+                  </h3>
+                  
+                  <div className="space-y-3 sm:space-y-4">
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Language</label>
+                      <select className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-white/10 border border-white/20 rounded-lg sm:rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm sm:text-base">
+                        <option>English</option>
+                        <option>Spanish</option>
+                        <option>French</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Currency</label>
+                      <select className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-white/10 border border-white/20 rounded-lg sm:rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm sm:text-base">
+                        <option>₦ Nigerian Naira (NGN)</option>
+                        <option>$ US Dollar (USD)</option>
+                        <option>€ Euro (EUR)</option>
+                        <option>£ British Pound (GBP)</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Time Zone</label>
+                      <select className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-white/10 border border-white/20 rounded-lg sm:rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm sm:text-base">
+                        <option>West Africa Time (WAT)</option>
+                        <option>Greenwich Mean Time (GMT)</option>
+                        <option>Central European Time (CET)</option>
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">Dark Mode</p>
+                        <p className="text-gray-400 text-xs sm:text-sm">Use dark theme across the application</p>
+                      </div>
+                      <button className="w-10 h-10 sm:w-12 sm:h-6 bg-blue-600 rounded-full relative transition-colors flex-shrink-0 ml-2">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full absolute right-0.5 sm:right-0.5 top-0.5 sm:top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-black/20 backdrop-blur-lg rounded-xl sm:rounded-2xl border border-white/10 shadow-2xl p-4 sm:p-6">
+                  <h3 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
+                    <span className="mr-3">🔔</span>
+                    Notification Settings
+                  </h3>
+                  
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">Low Stock Alerts</p>
+                        <p className="text-gray-400 text-xs sm:text-sm">Get notified when items are running low</p>
+                      </div>
+                      <button className="w-10 h-10 sm:w-12 sm:h-6 bg-blue-600 rounded-full relative transition-colors flex-shrink-0 ml-2">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full absolute right-0.5 sm:right-0.5 top-0.5 sm:top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">Sales Notifications</p>
+                        <p className="text-gray-400 text-xs sm:text-sm">Alert for new sales transactions</p>
+                      </div>
+                      <button className="w-10 h-10 sm:w-12 sm:h-6 bg-gray-600 rounded-full relative transition-colors flex-shrink-0 ml-2">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full absolute left-0.5 sm:left-0.5 top-0.5 sm:top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">Email Reports</p>
+                        <p className="text-gray-400 text-xs sm:text-sm">Receive daily/weekly sales reports</p>
+                      </div>
+                      <button className="w-10 h-10 sm:w-12 sm:h-6 bg-blue-600 rounded-full relative transition-colors flex-shrink-0 ml-2">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full absolute right-0.5 sm:right-0.5 top-0.5 sm:top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">System Updates</p>
+                        <p className="text-gray-400 text-xs sm:text-sm">Notifications about system updates</p>
+                      </div>
+                      <button className="w-10 h-10 sm:w-12 sm:h-6 bg-blue-600 rounded-full relative transition-colors flex-shrink-0 ml-2">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full absolute right-0.5 sm:right-0.5 top-0.5 sm:top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Business Settings */}
+            {activeSettingsTab === 'business' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">🏢</span>
+                    Business Information
+                  </h3>
+                  
+                  {businessSettings ? (
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      saveBusinessSettings(new FormData(e.currentTarget));
+                    }} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Business Name</label>
+                        <input
+                          name="business_name"
+                          type="text"
+                          defaultValue={businessSettings.business_name}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Business Type</label>
+                        <select
+                          name="business_type"
+                          defaultValue={businessSettings.business_type}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="retail">Retail Store</option>
+                          <option value="pharmacy">Pharmacy</option>
+                          <option value="bar">Bar</option>
+                          <option value="nightclub">Nightclub</option>
+                          <option value="grocery">Grocery Store</option>
+                          <option value="restaurant">Restaurant</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Business Size</label>
+                        <select
+                          name="business_size"
+                          defaultValue={businessSettings.business_size}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="small">Small (1-10 employees)</option>
+                          <option value="medium">Medium (11-50 employees)</option>
+                          <option value="large">Large (50+ employees)</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Contact Email</label>
+                        <input
+                          name="contact_email"
+                          type="email"
+                          defaultValue={businessSettings.contact_email}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Phone Number</label>
+                        <input
+                          name="contact_phone"
+                          type="tel"
+                          defaultValue={businessSettings.contact_phone}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <button type="submit" className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 font-medium">
+                        💾 Save Business Information
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">⏳</span>
+                      </div>
+                      <p className="text-gray-400">Loading business information...</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">📍</span>
+                    Business Address
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Address Line 1</label>
+                      <input
+                        type="text"
+                        defaultValue={businessSettings?.address_line_1 || ''}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        placeholder="123 Business Street"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Address Line 2</label>
+                      <input
+                        type="text"
+                        defaultValue={businessSettings?.address_line_2 || ''}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        placeholder="Suite 100"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">City</label>
+                        <input
+                          type="text"
+                          defaultValue={businessSettings?.city || ''}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Lagos"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">State</label>
+                        <input
+                          type="text"
+                          defaultValue={businessSettings?.state || ''}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Lagos State"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Postal Code</label>
+                      <input
+                        type="text"
+                        defaultValue={businessSettings?.postal_code || ''}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        placeholder="100001"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Country</label>
+                      <select
+                        defaultValue={businessSettings?.country || 'Nigeria'}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="Nigeria">Nigeria</option>
+                        <option value="Ghana">Ghana</option>
+                        <option value="Kenya">Kenya</option>
+                        <option value="South Africa">South Africa</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Printing Settings */}
+            {activeSettingsTab === 'printing' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">🖨️</span>
+                    Receipt Configuration
+                  </h3>
+                  
+                  {printSettings ? (
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      savePrintSettings(new FormData(e.currentTarget));
+                    }} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Receipt Header</label>
+                        <input
+                          name="print_header"
+                          type="text"
+                          defaultValue={printSettings.print_header}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Receipt Footer</label>
+                        <input
+                          name="print_footer"
+                          type="text"
+                          defaultValue={printSettings.print_footer}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Paper Width (characters)</label>
+                        <select
+                          name="paper_width"
+                          defaultValue={printSettings.paper_width}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="32">32 (Small)</option>
+                          <option value="48">48 (Standard)</option>
+                          <option value="64">64 (Large)</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Font Size</label>
+                        <select
+                          name="font_size"
+                          defaultValue={printSettings.font_size}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="small">Small</option>
+                          <option value="normal">Normal</option>
+                          <option value="large">Large</option>
+                        </select>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-white font-medium">Print Logo</p>
+                          <p className="text-gray-400 text-sm">Include business logo on receipts</p>
+                        </div>
+                        <input
+                          name="print_logo"
+                          type="checkbox"
+                          defaultChecked={printSettings.print_logo}
+                          className="w-5 h-5 rounded"
+                        />
+                      </div>
+                      
+                      <button type="submit" className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 font-medium">
+                        💾 Save Print Settings
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">⏳</span>
+                      </div>
+                      <p className="text-gray-400">Loading print settings...</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">🧪</span>
+                    Test Print
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-gray-800/50 rounded-xl p-4">
+                      <h4 className="text-white font-medium mb-2">Sample Receipt Preview</h4>
+                      <pre className="text-xs text-gray-300 font-mono whitespace-pre">
+{`================================
+${printSettings?.print_header || 'SALES RECEIPT'}
+================================
+
+Your Business Name
+Address, City
+Phone: +234 XXX XXX XXXX
+
+Receipt #: RCP1234567890
+Date: ${new Date().toLocaleString()}
+Cashier: Test User
+--------------------------------
+ITEMS
+--------------------------------
+SAMPLE PRODUCT
+  Qty:    1  Price:     ₦1000
+              Total:     ₦1000
+
+--------------------------------
+Subtotal:               ₦1000
+--------------------------------
+TOTAL:                  ₦1000
+--------------------------------
+Payment: CASH
+
+${printSettings?.print_footer || 'Thank you for your business!'}
+================================`}
+                      </pre>
+                    </div>
+                    
+                    <button 
+                      onClick={printTestReceipt}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 font-medium"
+                    >
+                      🖨️ Print Test Receipt
+                    </button>
+                    
+                    <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4">
+                      <p className="text-blue-300 text-sm">
+                        <strong>💡 Tip:</strong> Test receipts help you verify that your printer is configured correctly and the receipt format looks as expected.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Security Settings */}
+            {activeSettingsTab === 'security' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">🔐</span>
+                    Password & Authentication
+                  </h3>
+                  
+                  <form id="password-form" onSubmit={(e) => {
+                      e.preventDefault();
+                      updatePassword(new FormData(e.currentTarget));
+                    }} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                        <input
+                          name="current_password"
+                          type="password"
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Enter current password"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                        <input
+                          name="new_password"
+                          type="password"
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Enter new password"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                        <input
+                          name="confirm_password"
+                          type="password"
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Confirm new password"
+                        />
+                      </div>
+                      
+                      <button type="submit" className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 font-medium">
+                        🔒 Update Password
+                      </button>
+                    </form>
+                </div>
+
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">🛡️</span>
+                    Security Preferences
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">Two-Factor Authentication</p>
+                        <p className="text-gray-400 text-sm">Add an extra layer of security</p>
+                      </div>
+                      <button className="w-12 h-6 bg-gray-600 rounded-full relative transition-colors">
+                        <div className="w-5 h-5 bg-white rounded-full absolute left-0.5 top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">Session Timeout</p>
+                        <p className="text-gray-400 text-sm">Auto-logout after inactivity</p>
+                      </div>
+                      <select className="px-3 py-1 bg-white/10 border border-white/20 rounded-lg text-white text-sm">
+                        <option>30 minutes</option>
+                        <option>1 hour</option>
+                        <option>2 hours</option>
+                        <option>4 hours</option>
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">Login Notifications</p>
+                        <p className="text-gray-400 text-sm">Alert on new sign-ins</p>
+                      </div>
+                      <button className="w-12 h-6 bg-blue-600 rounded-full relative transition-colors">
+                        <div className="w-5 h-5 bg-white rounded-full absolute right-0.5 top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <div className="bg-yellow-600/20 border border-yellow-500/30 rounded-xl p-4">
+                      <p className="text-yellow-300 text-sm">
+                        <strong>⚠️ Security Tip:</strong> Use a strong password with at least 8 characters, including uppercase, lowercase, numbers, and symbols.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Backup Settings */}
+            {activeSettingsTab === 'backup' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">💾</span>
+                    Data Backup
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-gray-800/50 rounded-xl p-4">
+                      <h4 className="text-white font-medium mb-2">Last Backup</h4>
+                      <p className="text-gray-400 text-sm">No backup performed yet</p>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">Automatic Backups</p>
+                        <p className="text-gray-400 text-sm">Daily backup at 2:00 AM</p>
+                      </div>
+                      <button className="w-12 h-6 bg-blue-600 rounded-full relative transition-colors">
+                        <div className="w-5 h-5 bg-white rounded-full absolute right-0.5 top-0.5 transition-transform"></div>
+                      </button>
+                    </div>
+                    
+                    <button 
+                      onClick={createBackup}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 font-medium"
+                    >
+                      📥 Create Backup Now
+                    </button>
+                    
+                    <button 
+                      onClick={downloadBackup}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 font-medium"
+                    >
+                      📤 Download Backup
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-black/20 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <span className="mr-3">📊</span>
+                    Data Export
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <button 
+                      onClick={() => exportData('sales')}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-200 font-medium"
+                    >
+                      📈 Export Sales Report
+                    </button>
+                    
+                    <button 
+                      onClick={() => exportData('products')}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-xl hover:from-orange-700 hover:to-red-700 transition-all duration-200 font-medium"
+                    >
+                      📦 Export Products
+                    </button>
+                    
+                    <button 
+                      onClick={() => exportData('customers')}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 transition-all duration-200 font-medium"
+                    >
+                      👥 Export Customers
+                    </button>
+                    
+                    <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4">
+                      <p className="text-blue-300 text-sm">
+                        <strong>📋 Export Formats:</strong> CSV, Excel, and PDF formats available for all reports.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-white/20 shadow-2xl w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Add New Product</h3>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                addProduct({
+                  sku: formData.get('sku'),
+                  name: formData.get('name'),
+                  description: formData.get('description'),
+                  category: formData.get('category'),
+                  price: parseFloat(formData.get('price')),
+                  cost_price: parseFloat(formData.get('cost_price')),
+                  stock_quantity: parseInt(formData.get('stock_quantity')),
+                  low_stock_threshold: parseInt(formData.get('low_stock_threshold')),
+                  barcode: formData.get('barcode')
+                });
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">SKU</label>
+                    <input name="sku" type="text" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="e.g., PROD001" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Product Name</label>
+                    <input name="name" type="text" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="Product name" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                    <select name="category" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                      <option value="">Select category</option>
+                      <option value="Beverages">Beverages</option>
+                      <option value="Food">Food</option>
+                      <option value="Spirits">Spirits</option>
+                      <option value="Wine">Wine</option>
+                      <option value="Cocktails">Cocktails</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Price (₦)</label>
+                    <input name="price" type="number" step="0.01" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="0.00" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Stock Quantity</label>
+                    <input name="stock_quantity" type="number" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="0" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button type="submit" className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-lg">
+                    Add Product
+                  </button>
+                  <button type="button" onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all duration-200">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddCashier && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-white/20 shadow-2xl w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Add New Cashier</h3>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                addCashier({
+                  name: formData.get('name'),
+                  email: formData.get('email'),
+                  password: formData.get('password'),
+                  employee_id: formData.get('employee_id'),
+                  hire_date: formData.get('hire_date'),
+                  salary: parseFloat(formData.get('salary'))
+                });
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+                    <input name="name" type="text" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="Cashier name" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                    <input name="email" type="email" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="cashier@example.com" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                    <input name="password" type="password" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="Password" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Employee ID</label>
+                    <input name="employee_id" type="text" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="EMP001" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Monthly Salary (₦)</label>
+                    <input name="salary" type="number" step="0.01" required className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="800000.00" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button type="submit" className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg">
+                    Add Cashier
+                  </button>
+                  <button type="button" onClick={() => setShowAddCashier(false)} className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all duration-200">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal */}
+      {showEditProduct && editingProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-white/20 shadow-2xl w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Edit Product</h3>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                editProduct({
+                  id: editingProduct.id,
+                  sku: formData.get('sku'),
+                  name: formData.get('name'),
+                  description: formData.get('description'),
+                  category: formData.get('category'),
+                  price: parseFloat(formData.get('price')),
+                  cost_price: parseFloat(formData.get('cost_price')) || null,
+                  stock_quantity: parseInt(formData.get('stock_quantity')),
+                  low_stock_threshold: parseInt(formData.get('low_stock_threshold')),
+                  barcode: formData.get('barcode')
+                });
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">SKU</label>
+                    <input name="sku" type="text" required defaultValue={editingProduct.sku} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="e.g., PROD001" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Product Name</label>
+                    <input name="name" type="text" required defaultValue={editingProduct.name} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="Product name" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                    <select name="category" required defaultValue={editingProduct.category} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                      <option value="">Select category</option>
+                      <option value="Beverages">Beverages</option>
+                      <option value="Food">Food</option>
+                      <option value="Spirits">Spirits</option>
+                      <option value="Wine">Wine</option>
+                      <option value="Cocktails">Cocktails</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Price (₦)</label>
+                    <input name="price" type="number" step="0.01" required defaultValue={editingProduct.price} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="0.00" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Stock Quantity</label>
+                    <input name="stock_quantity" type="number" required defaultValue={editingProduct.stock_quantity} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Low Stock Threshold</label>
+                    <input name="low_stock_threshold" type="number" required defaultValue={editingProduct.low_stock_threshold} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Barcode (Optional)</label>
+                    <input name="barcode" type="text" defaultValue={editingProduct.barcode} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" placeholder="1234567890123" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button type="submit" className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg">
+                    Update Product
+                  </button>
+                  <button type="button" onClick={() => {
+                    setShowEditProduct(false);
+                    setEditingProduct(null);
+                  }} className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all duration-200">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

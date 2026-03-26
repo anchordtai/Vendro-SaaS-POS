@@ -1,5 +1,5 @@
-# Netlify configuration for Onyxx Nightlife POS
-# Do not use SPA redirects (e.g. /* -> /index.html); Next.js handles routing.
+# Netlify configuration for Vendro POS SaaS Platform
+# Optimized for Next.js App Router and API routes
 
 [build]
   command = "npm run build"
@@ -7,19 +7,18 @@
 
 [build.environment]
   NODE_VERSION = "18"
-  # Install devDependencies (TypeScript, ESLint) so next build can type-check and lint
+  NPM_VERSION = "9"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # Install devDependencies for TypeScript support
   NPM_CONFIG_PRODUCTION = "false"
 
-# Headers for security and performance
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:"
+# API Routes - Handle serverless functions
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
 
-# Static file caching
+# Static assets caching
 [[headers]]
   for = "/_next/static/*"
   [headers.values]
@@ -30,15 +29,47 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000"
 
-# Deployment settings
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# API headers for CORS
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+# Production environment variables
 [context.production]
   [context.production.environment]
     NODE_ENV = "production"
-    NEXT_PUBLIC_SUPABASE_URL = 'https://kjefreqibschtfdwyyfu.supabase.co'
-    NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY'
+    NEXT_PUBLIC_SUPABASE_URL = "https://vlksqjwupktmvypfmfur.supabase.co"
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_W1KzX92aK0WxgBuNyr7ECg_LcZnH6ke"
 
+# Deploy preview environment
 [context.deploy-preview]
   [context.deploy-preview.environment]
     NODE_ENV = "production"
-    NEXT_PUBLIC_SUPABASE_URL = 'https://kjefreqibschtfdwyyfu.supabase.co'
-    NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZWZyZXFpYnNjaHRmZHd5eWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3ODAsImV4cCI6MjA4ODg4ODc4MH0.i8Ktf8SVeinr3fu3lmU_J-I60Gp08WnLvj-AUhgXrPY'
+    NEXT_PUBLIC_SUPABASE_URL = "https://vlksqjwupktmvypfmfur.supabase.co"
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_W1KzX92aK0WxgBuNyr7ECg_LcZnH6ke"
+
+# Development branch environment
+[context.branch-deploy]
+  [context.branch-deploy.environment]
+    NODE_ENV = "production"
+    NEXT_PUBLIC_SUPABASE_URL = "https://vlksqjwupktmvypfmfur.supabase.co"
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_W1KzX92aK0WxgBuNyr7ECg_LcZnH6ke"
+
+# Function configuration for API routes
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["@supabase/supabase-js/**"]

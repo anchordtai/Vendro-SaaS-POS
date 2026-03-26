@@ -34,6 +34,7 @@ try {
 // Build Next.js application
 console.log('🏗️  Building Next.js application...');
 try {
+  execSync('npm run build:offline-ui', { stdio: 'inherit' });
   execSync('npm run build', { stdio: 'inherit' });
   console.log('✅ Next.js build completed');
 } catch (error) {

@@ -9,3 +9,7 @@ build/
 *.log
 .DS_Store
 
+# License signing keys (KEEP PRIVATE KEY OUT OF GIT)
+tools/license/keys/
+tools/license/*.pem
+

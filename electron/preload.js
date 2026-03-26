@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Printer operations
   printReceipt: (receiptData) => ipcRenderer.invoke('print-receipt', receiptData),
   getPrinters: () => ipcRenderer.invoke('get-printers'),
+
+  // Offline DB operations (Electron-only)
+  listProducts: (query) => ipcRenderer.invoke('db:list-products', query),
+  upsertProduct: (product) => ipcRenderer.invoke('db:upsert-product', product),
+  createSale: (salePayload) => ipcRenderer.invoke('db:create-sale', salePayload),
+  reportToday: () => ipcRenderer.invoke('db:report-today'),
   
   // Database operations (if needed for advanced features)
   exportData: (data, format) => ipcRenderer.invoke('export-data', data, format),

@@ -22,21 +22,21 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       
       try {
         // Quick session check without restoration
-        const sessionData = localStorage.getItem('pos_session');
+        const sessionData = localStorage.getItem('vendro_session');
         
         if (!sessionData) {
           console.log('No session found, redirecting to login');
           setHasRedirected(true);
-          router.push("/");
+          router.push("/login");
           return;
         }
 
         // Parse and validate session quickly
         const session = JSON.parse(sessionData);
         if (!session.user || !session.user.id || !session.user.email) {
-          localStorage.removeItem('pos_session');
+          localStorage.removeItem('vendro_session');
           setHasRedirected(true);
-          router.push("/");
+          router.push("/login");
           return;
         }
 
@@ -58,7 +58,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         console.error('Auth check error:', error);
         if (!hasRedirected) {
           setHasRedirected(true);
-          router.push("/");
+          router.push("/login");
         }
       }
     };

@@ -1,400 +1,1190 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAuthStore } from "@/lib/auth-store";
-import {
-  FiDollarSign,
-  FiShoppingCart,
-  FiPackage,
-  FiAlertTriangle,
-  FiTrendingUp,
-  FiTrendingDown,
-  FiArrowRight,
-} from "react-icons/fi";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { 
+  ShoppingCart, 
+  Package, 
+  Users, 
+  TrendingUp, 
+  Settings, 
+  CreditCard, 
+  Receipt, 
+  BarChart3,
+  Plus,
+  Search,
+  Filter,
+  Download,
+  Bell,
+  LogOut,
+  Store,
+  Calculator,
+  Clock,
+  DollarSign,
+  Box,
+  UserPlus,
+  Edit,
+  Trash2,
+  Eye,
+  X,
+  Check,
+  AlertCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  MoreVertical
+} from "lucide-react";
 
-// Demo data for the dashboard
-const demoStats = {
-  todaySales: 4520.5,
-  todayOrders: 89,
-  totalProducts: 156,
-  lowStockItems: 12,
-};
+export default function TenantDashboard() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [stats, setStats] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [showAddSale, setShowAddSale] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [cartItems, setCartItems] = useState<any[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-const demoSalesData = [
-  { name: "Mon", sales: 3200 },
-  { name: "Tue", sales: 2800 },
-  { name: "Wed", sales: 4100 },
-  { name: "Thu", sales: 3600 },
-  { name: "Fri", sales: 5200 },
-  { name: "Sat", sales: 6100 },
-  { name: "Sun", sales: 4500 },
-];
+  // Form states
+  const [productForm, setProductForm] = useState({
+    name: '',
+    price: '',
+    stock: '',
+    category: '',
+    sku: '',
+    description: ''
+  });
 
-const demoTopProducts = [
-  { name: "Premium Beer", sales: 245 },
-  { name: "Whiskey Shot", sales: 189 },
-  { name: "Vodka Mix", sales: 167 },
-  { name: "Cocktail Special", sales: 145 },
-  { name: "Wine Glass", sales: 98 },
-];
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
 
-const demoCategoryData = [
-  { name: "Beer", value: 35, color: "#2563EB" },
-  { name: "Whiskey", value: 25, color: "#7C3AED" },
-  { name: "Vodka", value: 20, color: "#059669" },
-  { name: "Wine", value: 12, color: "#DC2626" },
-  { name: "Food", value: 8, color: "#D97706" },
-];
+  const [saleForm, setSaleForm] = useState({
+    customer_id: '',
+    payment_method: 'cash',
+    discount: 0,
+    notes: ''
+  });
 
-const demoRecentSales = [
-  { id: "1", time: "2 min ago", items: 4, total: 125.0, cashier: "Cashier 1" },
-  { id: "2", time: "5 min ago", items: 2, total: 45.5, cashier: "Cashier 2" },
-  { id: "3", time: "8 min ago", items: 6, total: 210.0, cashier: "Cashier 1" },
-  { id: "4", time: "12 min ago", items: 1, total: 25.0, cashier: "Cashier 2" },
-  { id: "5", time: "15 min ago", items: 3, total: 89.99, cashier: "Cashier 1" },
-];
+  useEffect(() => {
+    const sessionData = localStorage.getItem('vendro_session');
+    if (!sessionData) {
+      router.push('/login');
+      return;
+    }
+    const session = JSON.parse(sessionData);
+    setUser(session.user);
+    loadDashboardData(session.user.tenant_id);
+  }, [router]);
 
-export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === "super_admin";
+  const loadDashboardData = async (tenantId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Load all data in parallel
+      const [statsResponse, productsResponse, salesResponse, customersResponse] = await Promise.all([
+        fetch(`/api/stats?tenant_id=${tenantId}`),
+        fetch(`/api/products?tenant_id=${tenantId}`),
+        fetch(`/api/sales?tenant_id=${tenantId}`),
+        fetch(`/api/customers?tenant_id=${tenantId}`)
+      ]);
+
+      // Handle responses
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        setStats(statsData);
+      }
+
+      if (productsResponse.ok) {
+        const productsData = await productsResponse.json();
+        setProducts(productsData || []);
+      }
+
+      if (salesResponse.ok) {
+        const salesData = await salesResponse.json();
+        // Handle both array and object with sales property
+        setSales(Array.isArray(salesData) ? salesData : (salesData.sales || []));
+      }
+
+      if (customersResponse.ok) {
+        const customersData = await customersResponse.json();
+        setCustomers(customersData || []);
+      }
+
+      // Set mock notifications for now
+      setNotifications([
+        { id: 1, type: 'warning', message: 'Low stock alert: Check inventory', time: '2 hours ago' },
+        { id: 2, type: 'success', message: 'Sales target achieved today!', time: '3 hours ago' },
+        { id: 3, type: 'info', message: 'New customer registered', time: '5 hours ago' },
+      ]);
+
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('vendro_session');
+    router.push('/login');
+  };
+
+  const addToCart = (product: any) => {
+    if (product.stock <= 0) return;
+    
+    const existingItem = cartItems.find(item => item.id === product.id);
+    if (existingItem) {
+      if (existingItem.quantity < product.stock) {
+        setCartItems(cartItems.map(item => 
+          item.id === product.id 
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        ));
+      }
+    } else {
+      setCartItems([...cartItems, { ...product, quantity: 1 }]);
+    }
+  };
+
+  const removeFromCart = (productId: number) => {
+    setCartItems(cartItems.filter(item => item.id !== productId));
+  };
+
+  const updateCartQuantity = (productId: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+    } else {
+      const product = products.find(p => p.id === productId);
+      if (product && quantity <= product.stock) {
+        setCartItems(cartItems.map(item => 
+          item.id === productId 
+            ? { ...item, quantity }
+            : item
+        ));
+      }
+    }
+  };
+
+  const getCartTotal = () => {
+    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const handleAddProduct = async () => {
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: user.tenant_id,
+          ...productForm
+        })
+      });
+
+      if (response.ok) {
+        const newProduct = await response.json();
+        setProducts([...products, newProduct]);
+        setShowAddProduct(false);
+        setProductForm({ name: '', price: '', stock: '', category: '', sku: '', description: '' });
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error adding product:', error);
+      alert('Error adding product. Please try again.');
+    }
+  };
+
+  const handleAddCustomer = async () => {
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: user.tenant_id,
+          ...customerForm
+        })
+      });
+
+      if (response.ok) {
+        const newCustomer = await response.json();
+        setCustomers([...customers, newCustomer]);
+        setShowAddCustomer(false);
+        setCustomerForm({ name: '', email: '', phone: '', address: '' });
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      alert('Error adding customer. Please try again.');
+    }
+  };
+
+  const handleCompleteSale = async () => {
+    if (cartItems.length === 0) return;
+
+    try {
+      const customer = customers.find(c => c.name === saleForm.customer_id);
+      
+      const saleData = {
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        customer_id: customer?.id || null,
+        customer_name: saleForm.customer_id || 'Walk-in Customer',
+        items: cartItems.map(item => ({
+          product_id: item.id,
+          product_name: item.name,
+          quantity: item.quantity,
+          unit_price: item.price,
+          total_price: item.price * item.quantity
+        })),
+        payment_method: saleForm.payment_method,
+        notes: saleForm.notes
+      };
+
+      const response = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(saleData)
+      });
+
+      if (response.ok) {
+        const newSale = await response.json();
+        setSales([newSale, ...sales]);
+        
+        // Update product stock locally
+        setProducts(products.map(product => {
+          const cartItem = cartItems.find(item => item.id === product.id);
+          if (cartItem) {
+            return { ...product, stock: product.stock - cartItem.quantity };
+          }
+          return product;
+        }));
+        
+        setCartItems([]);
+        setShowAddSale(false);
+        setSaleForm({ customer_id: '', payment_method: 'cash', discount: 0, notes: '' });
+        alert('Sale completed successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error completing sale:', error);
+      alert('Error completing sale. Please try again.');
+    }
+  };
+
+  const filteredProducts = products.filter(product =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.sku.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <p className="text-white text-lg mb-4">Error loading dashboard</p>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <button
+            onClick={() => loadDashboardData(user?.tenant_id)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500">Welcome back, {user?.name}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Last updated:</span>
-          <span className="text-sm font-medium text-gray-900">
-            {new Date().toLocaleTimeString()}
-          </span>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="mb-1 text-sm text-gray-500">Today's Sales</p>
-  <p className="text-2xl font-bold text-gray-900">
-                ₦{demoStats.todaySales.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                })}
-              </p>
+      <header className="bg-black/30 backdrop-blur-xl border-b border-white/10 sticky top-0 z-40">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-4">
+              <Store className="w-8 h-8 text-blue-400" />
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+                Vendro POS
+              </h1>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl">
-              <FiDollarSign className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-          <div className="flex items-center gap-1 mt-3 text-sm">
-            <FiTrendingUp className="w-4 h-4 text-green-500" />
-            <span className="font-medium text-green-600">+12.5%</span>
-            <span className="text-gray-400">from yesterday</span>
-          </div>
-        </div>
-
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="mb-1 text-sm text-gray-500">Total Orders</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {demoStats.todayOrders}
-              </p>
-            </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl">
-              <FiShoppingCart className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-          <div className="flex items-center gap-1 mt-3 text-sm">
-            <FiTrendingUp className="w-4 h-4 text-green-500" />
-            <span className="font-medium text-green-600">+8.2%</span>
-            <span className="text-gray-400">from yesterday</span>
-          </div>
-        </div>
-
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="mb-1 text-sm text-gray-500">Total Products</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {demoStats.totalProducts}
-              </p>
-            </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-xl">
-              <FiPackage className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-          <div className="mt-3 text-sm">
-            <Link
-              href="/dashboard/inventory"
-              className="text-primary hover:underline"
-            >
-              View inventory →
-            </Link>
-          </div>
-        </div>
-
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="mb-1 text-sm text-gray-500">Low Stock Items</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {demoStats.lowStockItems}
-              </p>
-            </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-xl">
-              <FiAlertTriangle className="w-6 h-6 text-red-600" />
-            </div>
-          </div>
-          <div className="mt-3 text-sm">
-            <Link
-              href="/dashboard/inventory"
-              className="text-red-600 hover:underline"
-            >
-              View alerts →
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Weekly Sales Chart */}
-        <div className="p-6 bg-white border border-gray-100 shadow-sm lg:col-span-2 rounded-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Weekly Sales
-            </h2>
-            <Link
-              href="/dashboard/reports"
-              className="text-sm text-primary hover:underline"
-            >
-              View Reports
-            </Link>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={demoSalesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="name" stroke="#6B7280" fontSize={12} />
-                <YAxis
-                  stroke="#6B7280"
-                  fontSize={12}
-                  tickFormatter={(value) => `₦${value}`}
+            
+            <div className="flex items-center space-x-4">
+              {/* Search */}
+              <div className="hidden md:flex items-center bg-white/10 rounded-lg px-3 py-2">
+                <Search className="w-4 h-4 text-gray-400 mr-2" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  className="bg-transparent text-white placeholder-gray-400 outline-none text-sm w-64"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#fff",
-                    border: "1px solid #E5E7EB",
-                    borderRadius: "8px",
-                  }}
-                  formatter={(value: number) => [
-                    `₦${value.toLocaleString()}`,
-                    "Sales",
-                  ]}
-                />
-                <Bar dataKey="sales" fill="#2563EB" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+              </div>
 
-        {/* Category Distribution */}
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <h2 className="mb-6 text-lg font-semibold text-gray-900">
-            Sales by Category
-          </h2>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={demoCategoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="value"
+              {/* Notifications */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
                 >
-                  {demoCategoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 space-y-2">
-            {demoCategoryData.map((category) => (
-              <div
-                key={category.name}
-                className="flex items-center justify-between text-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: category.color }}
-                  />
-                  <span className="text-gray-600">{category.name}</span>
-                </div>
-                <span className="font-medium text-gray-900">
-                  {category.value}%
-                </span>
+                  <Bell className="w-5 h-5" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                  )}
+                </button>
+                
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 shadow-xl">
+                    <div className="p-4 border-b border-white/10">
+                      <h3 className="text-white font-medium">Notifications</h3>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.map(notification => (
+                        <div key={notification.id} className="p-4 border-b border-white/10 hover:bg-white/5">
+                          <div className="flex items-start space-x-3">
+                            {notification.type === 'warning' && <AlertCircle className="w-5 h-5 text-yellow-400 mt-0.5" />}
+                            {notification.type === 'success' && <Check className="w-5 h-5 text-green-400 mt-0.5" />}
+                            {notification.type === 'info' && <Bell className="w-5 h-5 text-blue-400 mt-0.5" />}
+                            <div className="flex-1">
+                              <p className="text-white text-sm">{notification.message}</p>
+                              <p className="text-gray-400 text-xs mt-1">{notification.time}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+
+              {/* User Menu */}
+              <div className="flex items-center space-x-3">
+                <div className="hidden sm:block text-right">
+                  <p className="text-sm font-medium text-white">{user?.name}</p>
+                  <p className="text-xs text-gray-400">{user?.role}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="p-4 sm:p-6 lg:p-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Total Sales</p>
+                <p className="text-2xl font-bold text-white">{stats?.totalSales || 0}</p>
+                <div className="flex items-center mt-2">
+                  <ArrowUpRight className="w-4 h-4 text-green-400 mr-1" />
+                  <span className="text-green-400 text-sm">+{stats?.monthlyGrowth || 0}%</span>
+                </div>
+              </div>
+              <div className="p-3 bg-blue-500/20 rounded-lg">
+                <DollarSign className="w-6 h-6 text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Today's Sales</p>
+                <p className="text-2xl font-bold text-white">{stats?.todaySales || 0}</p>
+                <div className="flex items-center mt-2">
+                  <ArrowUpRight className="w-4 h-4 text-green-400 mr-1" />
+                  <span className="text-green-400 text-sm">Active today</span>
+                </div>
+              </div>
+              <div className="p-3 bg-green-500/20 rounded-lg">
+                <ShoppingCart className="w-6 h-6 text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Products</p>
+                <p className="text-2xl font-bold text-white">{stats?.totalProducts || 0}</p>
+                <div className="flex items-center mt-2">
+                  <AlertCircle className="w-4 h-4 text-yellow-400 mr-1" />
+                  <span className="text-yellow-400 text-sm">{stats?.lowStock || 0} low stock</span>
+                </div>
+              </div>
+              <div className="p-3 bg-purple-500/20 rounded-lg">
+                <Package className="w-6 h-6 text-purple-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Customers</p>
+                <p className="text-2xl font-bold text-white">{stats?.customerCount || 0}</p>
+                <div className="flex items-center mt-2">
+                  <ArrowUpRight className="w-4 h-4 text-green-400 mr-1" />
+                  <span className="text-green-400 text-sm">Registered</span>
+                </div>
+              </div>
+              <div className="p-3 bg-orange-500/20 rounded-lg">
+                <Users className="w-6 h-6 text-orange-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <button
+            onClick={() => router.push('/pos')}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg p-4 hover:from-blue-700 hover:to-blue-800 transition-all flex items-center justify-center space-x-2"
+          >
+            <Plus className="w-5 h-5" />
+            <span>New Sale</span>
+          </button>
+          <button
+            onClick={() => setShowAddProduct(true)}
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg p-4 hover:from-green-700 hover:to-green-800 transition-all flex items-center justify-center space-x-2"
+          >
+            <Package className="w-5 h-5" />
+            <span>Add Product</span>
+          </button>
+          <button
+            onClick={() => setShowAddCustomer(true)}
+            className="bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg p-4 hover:from-purple-700 hover:to-purple-800 transition-all flex items-center justify-center space-x-2"
+          >
+            <UserPlus className="w-5 h-5" />
+            <span>Add Customer</span>
+          </button>
+          <button className="bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg p-4 hover:from-orange-700 hover:to-orange-800 transition-all flex items-center justify-center space-x-2">
+            <BarChart3 className="w-5 h-5" />
+            <span>Reports</span>
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex space-x-1 mb-8 bg-white/5 p-1 rounded-lg">
+          {['overview', 'products', 'sales', 'customers', 'inventory'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? 'bg-white/20 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-white mb-6">Business Overview</h2>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Recent Sales */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">Recent Sales</h3>
+                  <div className="space-y-3">
+                    {sales.slice(0, 5).map(sale => (
+                      <div key={sale.id} className="bg-white/5 rounded-lg p-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-white font-medium">{sale.customer || 'Walk-in Customer'}</p>
+                          <p className="text-gray-400 text-sm">{sale.items || 0} items • {sale.payment_method || 'cash'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white font-bold">₦{(sale.total_amount || 0).toLocaleString()}</p>
+                          <p className={`text-xs px-2 py-1 rounded ${
+                            sale.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {sale.status || 'completed'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {sales.length === 0 && (
+                      <p className="text-gray-400 text-center py-8">No sales yet</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Products */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">Top Products</h3>
+                  <div className="space-y-3">
+                    {products.slice(0, 5).map(product => (
+                      <div key={product.id} className="bg-white/5 rounded-lg p-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-white font-medium">{product.name}</p>
+                          <p className="text-gray-400 text-sm">{product.category} • Stock: {product.stock}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white font-bold">₦{product.price}</p>
+                          <p className="text-gray-400 text-sm">{product.sales || 0} sold</p>
+                        </div>
+                      </div>
+                    ))}
+                    {products.length === 0 && (
+                      <p className="text-gray-400 text-center py-8">No products yet</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Products Tab */}
+          {activeTab === 'products' && (
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Products ({products.length})</h2>
+                <div className="flex space-x-2">
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Filter className="w-4 h-4" />
+                    <span>Filter</span>
+                  </button>
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Download className="w-4 h-4" />
+                    <span>Export</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-white">
+                  <thead>
+                    <tr className="border-b border-white/20">
+                      <th className="text-left py-3 px-4">SKU</th>
+                      <th className="text-left py-3 px-4">Product</th>
+                      <th className="text-left py-3 px-4">Category</th>
+                      <th className="text-left py-3 px-4">Price</th>
+                      <th className="text-left py-3 px-4">Stock</th>
+                      <th className="text-left py-3 px-4">Sales</th>
+                      <th className="text-left py-3 px-4">Status</th>
+                      <th className="text-left py-3 px-4">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.map(product => (
+                      <tr key={product.id} className="border-b border-white/10 hover:bg-white/5">
+                        <td className="py-3 px-4">{product.sku}</td>
+                        <td className="py-3 px-4">
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">{product.category}</td>
+                        <td className="py-3 px-4">₦{product.price}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            product.stock < 10 
+                              ? 'bg-red-500/20 text-red-400' 
+                              : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {product.stock}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">{product.sales || 0}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
+                            Active
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => addToCart(product)}
+                              disabled={product.stock <= 0}
+                              className={`p-1 rounded ${
+                                product.stock <= 0 
+                                  ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
+                                  : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                              }`}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {products.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="text-center py-8 text-gray-400">
+                          No products found. Add your first product to get started.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Sales Tab */}
+          {activeTab === 'sales' && (
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Sales History ({sales.length})</h2>
+                <div className="flex space-x-2">
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Filter className="w-4 h-4" />
+                    <span>Filter</span>
+                  </button>
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Download className="w-4 h-4" />
+                    <span>Export</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-white">
+                  <thead>
+                    <tr className="border-b border-white/20">
+                      <th className="text-left py-3 px-4">Date</th>
+                      <th className="text-left py-3 px-4">Customer</th>
+                      <th className="text-left py-3 px-4">Items</th>
+                      <th className="text-left py-3 px-4">Total</th>
+                      <th className="text-left py-3 px-4">Payment</th>
+                      <th className="text-left py-3 px-4">Status</th>
+                      <th className="text-left py-3 px-4">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.map(sale => (
+                      <tr key={sale.id} className="border-b border-white/10 hover:bg-white/5">
+                        <td className="py-3 px-4">{new Date(sale.created_at).toLocaleDateString()}</td>
+                        <td className="py-3 px-4">{sale.customer || 'Walk-in Customer'}</td>
+                        <td className="py-3 px-4">{sale.items || 0}</td>
+                        <td className="py-3 px-4 font-bold">₦{(sale.total_amount || 0).toLocaleString()}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-1 bg-white/10 rounded text-xs capitalize">
+                            {sale.payment_method || 'cash'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            sale.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {sale.status || 'completed'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex space-x-2">
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Receipt className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {sales.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-gray-400">
+                          No sales recorded yet. Start selling to see your sales history.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Customers Tab */}
+          {activeTab === 'customers' && (
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Customers ({customers.length})</h2>
+                <div className="flex space-x-2">
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Filter className="w-4 h-4" />
+                    <span>Filter</span>
+                  </button>
+                  <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+                    <Download className="w-4 h-4" />
+                    <span>Export</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-white">
+                  <thead>
+                    <tr className="border-b border-white/20">
+                      <th className="text-left py-3 px-4">Name</th>
+                      <th className="text-left py-3 px-4">Email</th>
+                      <th className="text-left py-3 px-4">Phone</th>
+                      <th className="text-left py-3 px-4">Orders</th>
+                      <th className="text-left py-3 px-4">Total Spent</th>
+                      <th className="text-left py-3 px-4">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customers.map(customer => (
+                      <tr key={customer.id} className="border-b border-white/10 hover:bg-white/5">
+                        <td className="py-3 px-4 font-medium">{customer.name}</td>
+                        <td className="py-3 px-4">{customer.email || '-'}</td>
+                        <td className="py-3 px-4">{customer.phone || '-'}</td>
+                        <td className="py-3 px-4">{customer.orders || 0}</td>
+                        <td className="py-3 px-4 font-bold">₦{(customer.totalSpent || 0).toLocaleString()}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex space-x-2">
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {customers.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-gray-400">
+                          No customers registered yet. Add your first customer to get started.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Inventory Tab */}
+          {activeTab === 'inventory' && (
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-white mb-6">Inventory Management</h2>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Low Stock Alerts */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">Low Stock Alerts</h3>
+                  <div className="space-y-3">
+                    {products.filter(p => p.stock < 10).map(product => (
+                      <div key={product.id} className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-white font-medium">{product.name}</p>
+                            <p className="text-gray-400 text-sm">SKU: {product.sku}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-red-400 font-bold">{product.stock} left</p>
+                            <button className="text-xs text-blue-400 hover:text-blue-300">Reorder</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {products.filter(p => p.stock < 10).length === 0 && (
+                      <p className="text-gray-400 text-center py-8">All products have sufficient stock</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inventory Summary */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">Inventory Summary</h3>
+                  <div className="space-y-4">
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300">Total Products</span>
+                        <span className="text-white font-bold">{products.length}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300">Low Stock Items</span>
+                        <span className="text-red-400 font-bold">{products.filter(p => p.stock < 10).length}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300">Total Value</span>
+                        <span className="text-white font-bold">₦{products.reduce((sum, p) => sum + (p.price * p.stock), 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Shopping Cart Sidebar */}
+      <div className={`fixed right-0 top-0 h-full w-96 bg-black/90 backdrop-blur-xl border-l border-white/20 transform transition-transform z-50 ${
+        showCart ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <div className="p-4 border-b border-white/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-white">Shopping Cart</h3>
+            <button
+              onClick={() => setShowCart(false)}
+              className="p-2 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          {cartItems.length === 0 ? (
+            <p className="text-gray-400 text-center py-8">Cart is empty</p>
+          ) : (
+            <div className="space-y-4">
+              {cartItems.map(item => (
+                <div key={item.id} className="bg-white/10 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="text-white font-medium">{item.name}</h4>
+                    <button
+                      onClick={() => removeFromCart(item.id)}
+                      className="p-1 text-gray-400 hover:text-red-400"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                        className="p-1 bg-white/10 rounded text-gray-400 hover:text-white"
+                      >
+                        -
+                      </button>
+                      <span className="text-white font-medium">{item.quantity}</span>
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                        className="p-1 bg-white/10 rounded text-gray-400 hover:text-white"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="text-white font-bold">₦{(item.price * item.quantity).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {cartItems.length > 0 && (
+          <div className="p-4 border-t border-white/20">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-white font-medium">Total:</span>
+              <span className="text-xl font-bold text-white">₦{getCartTotal().toLocaleString()}</span>
+            </div>
+            <button
+              onClick={() => {setShowAddSale(true); setShowCart(false);}}
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all"
+            >
+              Proceed to Checkout
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Top Selling Products */}
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Top Selling Products
-            </h2>
-            <Link
-              href="/dashboard/reports"
-              className="text-sm text-primary hover:underline"
-            >
-              View All
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {demoTopProducts.map((product, index) => (
-              <div
-                key={product.name}
-                className="flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 text-sm font-medium rounded-full bg-primary/10 text-primary">
-                    {index + 1}
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    {product.name}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 overflow-hidden bg-gray-100 rounded-full">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{
-                        width: `${(product.sales / demoTopProducts[0].sales) * 100}%`,
-                      }}
-                    />
-                  </div>
-                  <span className="w-12 text-sm text-right text-gray-500">
-                    {product.sales} sold
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Cart Toggle Button */}
+      <button
+        onClick={() => setShowCart(true)}
+        className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full shadow-lg hover:from-blue-700 hover:to-purple-700 transition-all z-40"
+      >
+        <ShoppingCart className="w-6 h-6" />
+        {cartItems.length > 0 && (
+          <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
+            {cartItems.length}
+          </span>
+        )}
+      </button>
 
-        {/* Recent Sales */}
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Recent Sales
-            </h2>
-            <Link
-              href="/dashboard/sales"
-              className="text-sm text-primary hover:underline"
-            >
-              View All
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {demoRecentSales.map((sale) => (
-              <div
-                key={sale.id}
-                className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-10 h-10 bg-green-100 rounded-lg">
-                    <FiShoppingCart className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      #{sale.id.padStart(4, "0")}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {sale.items} items • {sale.cashier}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">
-                    ${sale.total.toFixed(2)}
-                  </p>
-                  <p className="text-sm text-gray-500">{sale.time}</p>
-                </div>
+      {/* Add Product Modal */}
+      {showAddProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 w-full max-w-md">
+            <h3 className="text-xl font-bold text-white mb-4">Add New Product</h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Product Name"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={productForm.name}
+                onChange={(e) => setProductForm({...productForm, name: e.target.value})}
+              />
+              <input
+                type="text"
+                placeholder="SKU (Optional)"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={productForm.sku}
+                onChange={(e) => setProductForm({...productForm, sku: e.target.value})}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="number"
+                  placeholder="Price"
+                  className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({...productForm, price: e.target.value})}
+                />
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions for Admin */}
-      {isAdmin && (
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            Quick Actions
-          </h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Link
-              href="/dashboard/products"
-              className="flex flex-col items-center gap-2 p-4 transition-colors bg-gray-50 rounded-xl hover:bg-gray-100"
-            >
-              <FiPackage className="w-6 h-6 text-primary" />
-              <span className="text-sm font-medium text-gray-700">
+              <input
+                type="number"
+                placeholder="Stock Quantity"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={productForm.stock}
+                onChange={(e) => setProductForm({...productForm, stock: e.target.value})}
+              />
+              <select
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                value={productForm.category}
+                onChange={(e) => setProductForm({...productForm, category: e.target.value})}
+              >
+                <option value="">Select Category</option>
+                <option value="Medicine">Medicine</option>
+                <option value="Supplements">Supplements</option>
+                <option value="Hygiene">Hygiene</option>
+                <option value="Food">Food</option>
+                <option value="Other">Other</option>
+              </select>
+              <textarea
+                placeholder="Description (Optional)"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                rows={3}
+                value={productForm.description}
+                onChange={(e) => setProductForm({...productForm, description: e.target.value})}
+              />
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleAddProduct}
+                disabled={!productForm.name || !productForm.price || !productForm.stock}
+                className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all disabled:bg-gray-600 disabled:text-gray-400"
+              >
                 Add Product
-              </span>
-            </Link>
-            <Link
-              href="/dashboard/staff"
-              className="flex flex-col items-center gap-2 p-4 transition-colors bg-gray-50 rounded-xl hover:bg-gray-100"
-            >
-              <FiShoppingCart className="w-6 h-6 text-primary" />
-              <span className="text-sm font-medium text-gray-700">
-                Manage Staff
-              </span>
-            </Link>
-            <Link
-              href="/dashboard/reports"
-              className="flex flex-col items-center gap-2 p-4 transition-colors bg-gray-50 rounded-xl hover:bg-gray-100"
-            >
-              <FiTrendingUp className="w-6 h-6 text-primary" />
-              <span className="text-sm font-medium text-gray-700">
-                View Reports
-              </span>
-            </Link>
-            <Link
-              href="/dashboard/pos"
-              className="flex flex-col items-center gap-2 p-4 transition-colors bg-primary/10 rounded-xl hover:bg-primary/20"
-            >
-              <FiShoppingCart className="w-6 h-6 text-primary" />
-              <span className="text-sm font-medium text-primary">Open POS</span>
-            </Link>
+              </button>
+              <button
+                onClick={() => setShowAddProduct(false)}
+                className="flex-1 py-2 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Customer Modal */}
+      {showAddCustomer && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 w-full max-w-md">
+            <h3 className="text-xl font-bold text-white mb-4">Add New Customer</h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Customer Name"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={customerForm.name}
+                onChange={(e) => setCustomerForm({...customerForm, name: e.target.value})}
+              />
+              <input
+                type="email"
+                placeholder="Email (Optional)"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={customerForm.email}
+                onChange={(e) => setCustomerForm({...customerForm, email: e.target.value})}
+              />
+              <input
+                type="tel"
+                placeholder="Phone (Optional)"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                value={customerForm.phone}
+                onChange={(e) => setCustomerForm({...customerForm, phone: e.target.value})}
+              />
+              <textarea
+                placeholder="Address (Optional)"
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                rows={3}
+                value={customerForm.address}
+                onChange={(e) => setCustomerForm({...customerForm, address: e.target.value})}
+              />
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleAddCustomer}
+                disabled={!customerForm.name}
+                className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all disabled:bg-gray-600 disabled:text-gray-400"
+              >
+                Add Customer
+              </button>
+              <button
+                onClick={() => setShowAddCustomer(false)}
+                className="flex-1 py-2 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Sale Modal */}
+      {showAddSale && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-white mb-4">New Sale</h3>
+            
+            {cartItems.length === 0 ? (
+              <div className="text-center py-8">
+                <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-400 mb-4">Cart is empty. Add products to cart first.</p>
+                <button
+                  onClick={() => {setShowAddSale(false); setShowCart(true);}}
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all"
+                >
+                  Add Products
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Cart Summary */}
+                <div className="bg-white/5 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-3">Order Summary</h4>
+                  <div className="space-y-2">
+                    {cartItems.map(item => (
+                      <div key={item.id} className="flex justify-between text-sm">
+                        <span className="text-gray-300">{item.name} x {item.quantity}</span>
+                        <span className="text-white">₦{(item.price * item.quantity).toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-white/20 pt-2 mt-2">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-white">Total:</span>
+                        <span className="text-white">₦{getCartTotal().toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Selection */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Customer (Optional)</label>
+                  <select
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                    value={saleForm.customer_id}
+                    onChange={(e) => setSaleForm({...saleForm, customer_id: e.target.value})}
+                  >
+                    <option value="">Walk-in Customer</option>
+                    {customers.map(customer => (
+                      <option key={customer.id} value={customer.name}>{customer.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Payment Method */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Payment Method</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {['cash', 'card', 'transfer'].map(method => (
+                      <button
+                        key={method}
+                        onClick={() => setSaleForm({...saleForm, payment_method: method as any})}
+                        className={`py-2 px-4 rounded-lg border transition-all ${
+                          saleForm.payment_method === method
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white/10 border-white/20 text-gray-300 hover:bg-white/20'
+                        }`}
+                      >
+                        {method.charAt(0).toUpperCase() + method.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Notes (Optional)</label>
+                  <textarea
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400"
+                    rows={3}
+                    placeholder="Order notes..."
+                    value={saleForm.notes}
+                    onChange={(e) => setSaleForm({...saleForm, notes: e.target.value})}
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleCompleteSale}
+                    className="flex-1 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-medium hover:from-green-700 hover:to-green-800 transition-all"
+                  >
+                    Complete Sale - ₦{getCartTotal().toLocaleString()}
+                  </button>
+                  <button
+                    onClick={() => setShowAddSale(false)}
+                    className="flex-1 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

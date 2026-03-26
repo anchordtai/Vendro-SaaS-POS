@@ -1,6 +1,7 @@
 {
-  "name": "onyxx-nightlife-pos",
-  "version": "1.0.0",
+  "name": "vendro-saas-pos",
+  "version": "2.0.0",
+  "description": "Multi-tenant SaaS POS platform for diverse business types",
   "private": true,
   "main": "electron/main.js",
   "homepage": "./",
@@ -9,25 +10,35 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "type-check": "tsc --noEmit",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron-build": "npm run build && electron-builder",
-    "build-installer": "npm run build && electron-builder --win --publish=never",
+    "build:offline-ui": "node electron/build-offline-ui.js",
+    "electron-build": "npm run build:offline-ui && npm run build && electron-builder",
+    "build-installer": "npm run build:offline-ui && npm run build && electron-builder --win --publish=never",
     "dist": "node build-electron.js",
     "build-pos": "npm run dist",
     "build-simple": "node build-simple.js",
-    "deploy": "npm run build && npx netlify deploy --prod --dir=.next",
-    "deploy-preview": "npm run build && npx netlify deploy --dir=.next"
+    "netlify:build": "npm run build",
+    "netlify:deploy": "npm run build && npx netlify deploy --prod --dir=.next",
+    "netlify:preview": "npm run build && npx netlify deploy --dir=.next",
+    "pre-build": "npm run lint && npm run type-check",
+    "postbuild": "echo 'Build completed successfully for Netlify deployment'"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.8.0",
     "@supabase/supabase-js": "^2.39.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.17",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "cors": "^2.8.6",
     "date-fns": "^3.3.0",
+    "electron-pos-printer": "^1.3.8",
+    "express": "^5.2.1",
     "idb": "^8.0.0",
     "lucide-react": "^0.309.0",
     "next": "^14.2.0",
@@ -36,9 +47,10 @@
     "react-dom": "^18.2.0",
     "react-icons": "^5.0.0",
     "recharts": "^2.10.0",
-    "tailwindcss": "^3.4.1",
     "tailwind-merge": "^2.2.0",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5.3.0",
+    "uuid": "^13.0.0",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
@@ -46,7 +58,7 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "concurrently": "^8.2.2",
-    "electron": "^28.2.0",
+    "electron": "^29.4.0",
     "electron-builder": "^24.9.1",
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.2.0",
@@ -56,13 +68,13 @@
     "node": ">=18.0.0"
   },
   "build": {
-    "appId": "com.onyxxnightlife.pos",
-    "productName": "Onyxx Nightlife POS",
+    "appId": "com.onyxx.pos",
+    "productName": "Onyxx POS",
     "directories": {
       "output": "dist"
     },
     "files": [
-      "build/**/*",
+      "out/**/*",
       "electron/**/*",
       "node_modules/**/*",
       "package.json"
@@ -82,7 +94,9 @@
       {
         "from": "public",
         "to": "public",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }

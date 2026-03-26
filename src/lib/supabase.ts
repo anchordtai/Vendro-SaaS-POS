@@ -1,13 +1,40 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// Use env at runtime; allow build to succeed when vars not set (e.g. Netlify build)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+// Use environment variables with fallback
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://vlksqjwupktmvypfmfur.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_W1KzX92aK0WxgBuNyr7ECg_LcZnH6ke";
 
-export const supabase: SupabaseClient =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : (createClient("https://placeholder.supabase.co", "placeholder-anon-key") as SupabaseClient);
+// Client-side Supabase client
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+  global: {
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    }
+  }
+});
+
+// Server-side Supabase client (for API routes)
+export const supabaseAdmin = createClient(
+  supabaseUrl,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    }
+  }
+);
 
 export interface User {
   id: string;

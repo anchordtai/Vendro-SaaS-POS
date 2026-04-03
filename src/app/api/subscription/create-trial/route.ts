@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     console.log('Creating trial subscription for tenant:', tenant_id);
 
     // Get starter plan
-    const { data: plan, error: planError } = await supabaseAdmin
+    let { data: plan, error: planError } = await supabaseAdmin
       .from('plans')
       .select('*')
       .eq('tier', 'starter')

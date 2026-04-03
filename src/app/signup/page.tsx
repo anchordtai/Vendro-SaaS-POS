@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TenantService } from "@/lib/tenant-service";
 import { supabase } from "@/lib/supabase";
 import type { BusinessType, BusinessSize } from "@/types/saas";
 
@@ -76,42 +75,33 @@ export default function SignUpPage() {
         return;
       }
 
-      // Create Supabase Auth user first
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: adminData.email,
-        password: adminData.password,
-        options: {
-          data: {
-            name: adminData.name,
-          }
-        }
-      });
-
-      if (authError) {
-        setError(authError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!authData.user) {
-        setError("Failed to create auth user");
-        setLoading(false);
-        return;
-      }
-
-      // Create tenant and user with the auth user ID
-      const result = await TenantService.createTenant({
-        ...businessData,
-        admin_user: {
-          id: authData.user.id, // Pass the auth user ID
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: adminData.email.trim().toLowerCase(),
+          password: adminData.password,
           name: adminData.name,
-          email: adminData.email,
-          password: adminData.password
-        }
+          business_name: businessData.business_name,
+          business_type: businessData.business_type,
+          business_size: businessData.business_size,
+          business_email: businessData.email.trim().toLowerCase(),
+        }),
       });
 
-      // Show success message and redirect
-      router.push(`/signup/success?tenant=${result.tenant.id}`);
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Signup failed");
+      }
+
+      if (result.session?.access_token && result.session?.refresh_token) {
+        await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        });
+      }
+
+      router.push(result.redirectTo || "/dashboard");
     } catch (error: any) {
       setError(error.message || "Failed to create account");
     } finally {

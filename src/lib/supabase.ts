@@ -21,7 +21,7 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
 // Server-side Supabase client (for API routes)
 export const supabaseAdmin = createClient(
   supabaseUrl,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsa3Nxand1cGt0bXZ5cGZtdXIiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3MjQ4MjcwNzQsImV4cCI6MjA0MDQwMzA3NH0.wYJ2zQgJlCuKFYFvLxIFJ0xsBVD6-JJdGOuJ-iMVdgI",
   {
     auth: {
       persistSession: false,
@@ -30,7 +30,8 @@ export const supabaseAdmin = createClient(
     global: {
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsa3Nxand1cGt0bXZ5cGZtdXIiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3MjQ4MjcwNzQsImV4cCI6MjA0MDQwMzA3NH0.wYJ2zQgJlCuKFYFvLxIFJ0xsBVD6-JJdGOuJ-iMVdgI"
       }
     }
   }

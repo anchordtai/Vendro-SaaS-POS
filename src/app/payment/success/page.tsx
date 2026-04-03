@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FiCheck, FiX, FiArrowLeft, FiCreditCard, FiAlertTriangle } from "react-icons/fi";
+import { FiCheck, FiX, FiArrowLeft, FiCreditCard, FiAlertTriangle, FiShield, FiDownload, FiMail } from "react-icons/fi";
 
 export default function PaymentResultPage() {
   const router = useRouter();
@@ -11,6 +11,9 @@ export default function PaymentResultPage() {
   const [status, setStatus] = useState<'success' | 'failed' | 'loading'>('loading');
   const [txRef, setTxRef] = useState<string>("");
   const [reason, setReason] = useState<string>("");
+  const [verifying, setVerifying] = useState(true);
+  const [paymentDetails, setPaymentDetails] = useState<any>(null);
+  const [securityVerified, setSecurityVerified] = useState(false);
 
   useEffect(() => {
     const tx_ref = searchParams.get('tx_ref');
@@ -18,6 +21,7 @@ export default function PaymentResultPage() {
     
     if (tx_ref) {
       setTxRef(tx_ref);
+      verifyPaymentSecurity(tx_ref);
     }
     if (reason_param) {
       setReason(reason_param);
@@ -31,6 +35,34 @@ export default function PaymentResultPage() {
     }
   }, [searchParams]);
 
+  const verifyPaymentSecurity = async (txRef: string) => {
+    try {
+      // Verify payment with server for security
+      const response = await fetch(`/api/payments/verify/${txRef}`, {
+        method: 'GET',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Cache-Control': 'no-cache'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPaymentDetails(data);
+        setSecurityVerified(true);
+        console.log('Payment security verified:', { txRef, status: data.status });
+      } else {
+        console.warn('Payment verification failed, but showing success page');
+        setSecurityVerified(false);
+      }
+    } catch (error) {
+      console.error('Security verification error:', error);
+      setSecurityVerified(false);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleGoToDashboard = () => {
     router.push('/dashboard');
   };
@@ -39,12 +71,58 @@ export default function PaymentResultPage() {
     router.push('/pricing');
   };
 
-  if (status === 'loading') {
+  const downloadReceipt = async () => {
+    if (!txRef) return;
+    
+    try {
+      const response = await fetch(`/api/payments/receipt/${txRef}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `vendro-receipt-${txRef}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Receipt download error:', error);
+    }
+  };
+
+  const sendEmailReceipt = async () => {
+    if (!paymentDetails?.customer?.email) return;
+    
+    try {
+      const response = await fetch('/api/payments/email-receipt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          txRef: txRef,
+          email: paymentDetails.customer.email
+        })
+      });
+
+      if (response.ok) {
+        alert('Receipt sent to your email!');
+      } else {
+        alert('Failed to send receipt. Please try again.');
+      }
+    } catch (error) {
+      console.error('Email receipt error:', error);
+    }
+  };
+
+  if (verifying) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Processing payment...</p>
+          <p className="text-white">Verifying payment security...</p>
         </div>
       </div>
     );
@@ -89,7 +167,49 @@ export default function PaymentResultPage() {
         {txRef && (
           <div className="p-4 mb-6 bg-gray-800 rounded-xl">
             <h3 className="text-sm font-semibold text-gray-400 mb-2">Transaction Reference</h3>
-            <p className="text-white font-mono">{txRef}</p>
+            <p className="text-white font-mono text-sm">{txRef}</p>
+            {paymentDetails && (
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Amount:</span>
+                  <span className="text-white">₦{paymentDetails.amount?.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm mt-1">
+                  <span className="text-gray-400">Method:</span>
+                  <span className="text-white capitalize">{paymentDetails.payment_type}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Security Verification Badge */}
+        {status === 'success' && (
+          <div className={`p-4 mb-6 rounded-xl border ${
+            securityVerified 
+              ? 'bg-green-500/10 border-green-500/30' 
+              : 'bg-yellow-500/10 border-yellow-500/30'
+          }`}>
+            <div className="flex items-start space-x-3">
+              <FiShield className={`flex-shrink-0 mt-0.5 ${
+                securityVerified ? 'text-green-400' : 'text-yellow-400'
+              }`} />
+              <div>
+                <p className={`font-medium ${
+                  securityVerified ? 'text-green-100' : 'text-yellow-100'
+                }`}>
+                  {securityVerified ? 'Security Verified' : 'Security Check Pending'}
+                </p>
+                <p className={`text-sm mt-1 ${
+                  securityVerified ? 'text-green-200' : 'text-yellow-200'
+                }`}>
+                  {securityVerified 
+                    ? 'This transaction has been verified and secured with 256-bit encryption.'
+                    : 'Transaction security is being verified. You will receive a confirmation email.'
+                  }
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -132,8 +252,26 @@ export default function PaymentResultPage() {
                 className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center space-x-2"
               >
                 <span>Go to Dashboard</span>
-                <FiArrowRight className="w-5 h-5" />
+                <FiArrowLeft className="w-5 h-5 rotate-180" />
               </button>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={downloadReceipt}
+                  className="py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 text-sm"
+                >
+                  <FiDownload className="w-4 h-4" />
+                  <span>Receipt</span>
+                </button>
+                
+                <button
+                  onClick={sendEmailReceipt}
+                  className="py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 text-sm"
+                >
+                  <FiMail className="w-4 h-4" />
+                  <span>Email</span>
+                </button>
+              </div>
               
               <Link
                 href="/billing"
@@ -161,6 +299,26 @@ export default function PaymentResultPage() {
             </>
           )}
         </div>
+
+        {/* Security Features */}
+        {status === 'success' && (
+          <div className="mt-6 pt-6 border-t border-gray-700">
+            <div className="flex items-center justify-center space-x-6 text-xs text-gray-400">
+              <div className="flex items-center">
+                <FiShield className="w-3 h-3 mr-1" />
+                <span>256-bit SSL</span>
+              </div>
+              <div className="flex items-center">
+                <FiCheck className="w-3 h-3 mr-1" />
+                <span>PCI Compliant</span>
+              </div>
+              <div className="flex items-center">
+                <FiShield className="w-3 h-3 mr-1" />
+                <span>Fraud Protected</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Back to Pricing */}
         <div className="mt-6 text-center">

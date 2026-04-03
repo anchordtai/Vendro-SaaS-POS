@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -79,13 +80,17 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Store session data
-      localStorage.setItem('vendro_session', JSON.stringify({
-        user: data.user,
-        tenant: data.tenant,
-        subscription: data.subscription,
-        session: data.session
-      }));
+      if (data.session?.access_token && data.session?.refresh_token) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+
+      if (data.redirectTo) {
+        router.push(data.redirectTo);
+        return;
+      }
 
       // Redirect based on user role
       const urlParams = new URLSearchParams(window.location.search);
@@ -94,13 +99,16 @@ export default function LoginPage() {
       if (data.user.role === 'super_admin') {
         console.log('Redirecting super admin to: /admin');
         router.push('/admin');
-      } else if (data.user.role === 'cashier') {
-        console.log('Redirecting cashier to: /pos');
-        router.push('/pos');
+      } else if (data.user.role === 'cashier' || data.user.role === 'staff') {
+        console.log('Redirecting cashier/staff to: /dashboard/cashier');
+        router.push('/dashboard/cashier');
+      } else if (data.user.role === 'tenant_admin' || data.user.role === 'manager') {
+        console.log('Redirecting tenant admin/manager to: /dashboard/admin');
+        router.push('/dashboard/admin');
       } else {
-        // tenant_admin
+        // Fallback to dashboard router
         const redirectTo = redirect || '/dashboard';
-        console.log('Redirecting tenant admin to:', redirectTo);
+        console.log('Redirecting to:', redirectTo);
         router.push(redirectTo);
       }
 

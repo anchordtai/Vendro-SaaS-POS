@@ -15,17 +15,73 @@ export default function PricingPage() {
   const [businessSize, setBusinessSize] = useState<BusinessSize>('small');
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [trialLoading, setTrialLoading] = useState(false);
 
   useEffect(() => {
     fetchPlans();
+    checkSubscriptionStatus();
     
     // Get URL parameters
     const reason = searchParams.get('reason');
     if (reason) {
       // Handle different reasons for showing pricing page
       console.log('Showing pricing for reason:', reason);
+      setSubscriptionStatus(reason);
     }
   }, [searchParams]);
+
+  const checkSubscriptionStatus = async () => {
+    try {
+      const response = await fetch('/api/auth/user');
+      if (response.ok) {
+        const userData = await response.json();
+        setTenantId(userData.tenant_id);
+        
+        // Get subscription status
+        const subscriptionResponse = await fetch(`/api/subscription/status?tenant_id=${userData.tenant_id}`);
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json();
+          setSubscriptionStatus(subscriptionData.status);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+    }
+  };
+
+  const startTrial = async () => {
+    if (!tenantId) {
+      router.push('/login');
+      return;
+    }
+
+    setTrialLoading(true);
+    try {
+      const response = await fetch('/api/subscription/create-trial', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tenant_id: tenantId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('7-day trial started successfully! You can now access your dashboard.');
+        router.push('/dashboard');
+      } else {
+        alert(data.error || 'Failed to start trial');
+      }
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      alert('Failed to start trial. Please try again.');
+    } finally {
+      setTrialLoading(false);
+    }
+  };
 
   const fetchPlans = async () => {
     try {
@@ -129,6 +185,72 @@ export default function PricingPage() {
             Choose the perfect plan for your business. All plans include core features with no hidden fees.
           </p>
         </div>
+
+        {/* Subscription Status Alert */}
+        {subscriptionStatus && (
+          <div className="mb-12 max-w-3xl mx-auto">
+            {subscriptionStatus === 'no_subscription' && (
+              <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-6 backdrop-blur-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-yellow-200 mb-2">
+                      Start Your 7-Day Free Trial
+                    </h3>
+                    <p className="text-yellow-100 mb-4">
+                      Get full access to all features during your trial period. No credit card required.
+                    </p>
+                    <button
+                      onClick={startTrial}
+                      disabled={trialLoading}
+                      className="px-6 py-3 bg-yellow-500 text-yellow-900 rounded-lg hover:bg-yellow-400 transition-colors font-medium disabled:opacity-50"
+                    >
+                      {trialLoading ? 'Starting Trial...' : 'Start Free Trial'}
+                    </button>
+                  </div>
+                  <div className="text-yellow-200">
+                    <div className="text-4xl mb-2">🚀</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {subscriptionStatus === 'trial_expired' && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-6 backdrop-blur-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-red-200 mb-2">
+                      Your Trial Has Expired
+                    </h3>
+                    <p className="text-red-100 mb-4">
+                      Choose a plan below to continue using Vendro POS and keep your business running smoothly.
+                    </p>
+                  </div>
+                  <div className="text-red-200">
+                    <div className="text-4xl mb-2">⏰</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {subscriptionStatus === 'inactive' && (
+              <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-6 backdrop-blur-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-orange-200 mb-2">
+                      Subscription Inactive
+                    </h3>
+                    <p className="text-orange-100 mb-4">
+                      Please choose a plan below to reactivate your subscription and regain access to your dashboard.
+                    </p>
+                  </div>
+                  <div className="text-orange-200">
+                    <div className="text-4xl mb-2">🔄</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Billing Toggle */}
         <div className="flex justify-center mb-12">

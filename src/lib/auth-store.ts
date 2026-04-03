@@ -14,8 +14,8 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: "super_admin" | "cashier";
-  status: boolean;
+  role: "super_admin" | "tenant_admin" | "manager" | "cashier" | "staff";
+  status: boolean; // maps from public.users.is_active
   created_at: string;
 }
 
@@ -212,7 +212,31 @@ export const useAuthStore = create<AuthStore>()(
               }
             }
           }
-          
+
+          // Cookie-backed session (server-side /api/auth/login & /api/auth/signup)
+          try {
+            const res = await fetch("/api/auth/user", { credentials: "include" });
+            if (res.ok) {
+              const apiUser = await res.json();
+              set({
+                user: {
+                  id: apiUser.id,
+                  name: apiUser.name,
+                  email: apiUser.email,
+                  role: apiUser.role,
+                  status: Boolean(apiUser.is_active),
+                  created_at: apiUser.created_at,
+                },
+                isAuthenticated: true,
+                isOfflineMode: false,
+                error: null,
+              });
+              return;
+            }
+          } catch (e) {
+            // Ignore and fall through to clearing local session
+          }
+
           // Clear invalid session
           localStorage.removeItem('pos_session');
           set({

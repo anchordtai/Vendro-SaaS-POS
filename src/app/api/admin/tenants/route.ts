@@ -10,68 +10,75 @@ const supabaseAuth = createClient(
 // GET all tenants for admin
 export async function GET() {
   try {
-    const { data: tenants, error } = await supabaseAdmin
+    // Get tenants with basic info first
+    const { data: tenants, error: tenantsError } = await supabaseAdmin
       .from('tenants')
-      .select(`
-        *,
-        subscriptions(
-          plan_name,
-          status,
-          expires_at,
-          trial_ends_at
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Admin tenants fetch error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (tenantsError) {
+      console.error('Admin tenants fetch error:', tenantsError);
+      return NextResponse.json({ error: tenantsError.message }, { status: 500 });
     }
 
-    // Get additional statistics for each tenant
-    const enrichedTenants = await Promise.all(
+    // Get additional data for each tenant
+    const transformedTenants = await Promise.all(
       (tenants || []).map(async (tenant) => {
-        // Get user count
-        const { count: usersCount } = await supabaseAdmin
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id);
+        try {
+          // Get user count
+          const { count: usersCount } = await supabaseAdmin
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('tenant_id', tenant.id);
 
-        // Get total sales
-        const { data: salesData } = await supabaseAdmin
-          .from('sales')
-          .select('total_amount')
-          .eq('tenant_id', tenant.id)
-          .eq('status', 'completed');
+          // Get product count
+          const { count: productsCount } = await supabaseAdmin
+            .from('products')
+            .select('*', { count: 'exact', head: true })
+            .eq('tenant_id', tenant.id);
 
-        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          // Get sales data
+          const { data: salesData } = await supabaseAdmin
+            .from('sales')
+            .select('total_amount')
+            .eq('tenant_id', tenant.id);
 
-        // Get product count
-        const { count: productsCount } = await supabaseAdmin
-          .from('products')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id)
-          .eq('is_active', true);
+          // Get subscription info
+          const { data: subscriptionData } = await supabaseAdmin
+            .from('subscriptions')
+            .select('id, status, trial_ends_at, created_at')
+            .eq('tenant_id', tenant.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        // Get customer count
-        const { count: customersCount } = await supabaseAdmin
-          .from('customers')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id)
-          .eq('is_active', true);
+          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          const totalSalesCount = salesData?.length || 0;
 
-        return {
-          ...tenant,
-          status: 'active', // Default status since column doesn't exist
-          users_count: usersCount || 0,
-          total_sales: totalSales,
-          total_products: productsCount || 0,
-          total_customers: customersCount || 0
-        };
+          return {
+            ...tenant,
+            users_count: usersCount || 0,
+            total_products: productsCount || 0,
+            total_sales: totalSalesCount,
+            total_revenue: totalSales,
+            subscription: subscriptionData?.[0] || null,
+            status: 'active' // Default status since column doesn't exist
+          };
+        } catch (error) {
+          console.error('Error processing tenant:', tenant.id, error);
+          return {
+            ...tenant,
+            users_count: 0,
+            total_products: 0,
+            total_sales: 0,
+            total_revenue: 0,
+            subscription: null,
+            status: 'active'
+          };
+        }
       })
     );
 
-    return NextResponse.json(enrichedTenants);
+    return NextResponse.json(transformedTenants);
 
   } catch (error) {
     console.error('Admin tenants API error:', error);
@@ -79,7 +86,7 @@ export async function GET() {
   }
 }
 
-// POST create new tenant with admin user
+// POST create a new tenant with admin user
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -96,44 +103,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Step 1: Create auth user
-    const { data: authData, error: authError } = await supabaseAuth.auth.admin.createUser({
-      email: admin_email,
-      password: admin_password,
-      email_confirm: true,
-      user_metadata: {
-        name: admin_name,
-        role: 'tenant_admin'
-      }
-    });
-
-    if (authError) {
-      console.error('Auth user creation error:', authError);
-      return NextResponse.json({ error: authError.message }, { status: 500 });
-    }
-
-    // Step 2: Create tenant
+    // Step 1: Create tenant first
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
       .insert({
         business_name,
         business_type,
         business_size,
-        email: admin_email, // Add required email
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        email: admin_email,
+        phone: null,
+        address: null,
+        city: null,
+        country: null
       })
       .select()
       .single();
 
     if (tenantError) {
       console.error('Tenant creation error:', tenantError);
-      // Rollback auth user creation
-      await supabaseAuth.auth.admin.deleteUser(authData.user.id);
-      return NextResponse.json({ error: tenantError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to create tenant' }, { status: 500 });
     }
 
-    // Step 3: Create user record
+    // Step 2: Create auth user with tenant metadata
+    const { data: authData, error: authError } = await supabaseAuth.auth.admin.createUser({
+      email: admin_email,
+      password: admin_password,
+      email_confirm: true,
+      user_metadata: {
+        name: admin_name,
+        role: 'tenant_admin',
+        tenant_id: tenant.id
+      }
+    });
+
+    if (authError) {
+      console.error('Auth user creation error:', authError);
+      // Cleanup tenant on auth failure
+      await supabaseAdmin.from('tenants').delete().eq('id', tenant.id);
+      return NextResponse.json({ error: authError.message }, { status: 500 });
+    }
+
+    // Step 3: Create user record manually
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .insert({
@@ -142,9 +152,9 @@ export async function POST(request: Request) {
         name: admin_name,
         email: admin_email,
         role: 'tenant_admin',
-        status: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        password_hash: 'managed_by_supabase',
+        is_active: true,
+        created_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -159,45 +169,38 @@ export async function POST(request: Request) {
 
     // Step 4: Create trial subscription
     const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 14); // 14-day trial
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7-day trial
 
     const { error: subscriptionError } = await supabaseAdmin
       .from('subscriptions')
       .insert({
         tenant_id: tenant.id,
-        plan_id: 'trial',
-        plan_name: 'Trial Plan',
+        plan_id: null, // Will be set when they choose a plan
         status: 'trial',
+        billing_cycle: 'monthly',
         trial_ends_at: trialEndsAt.toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        current_period_start: new Date().toISOString(),
+        current_period_end: trialEndsAt.toISOString()
       });
 
     if (subscriptionError) {
       console.error('Subscription creation error:', subscriptionError);
-      // Continue anyway - tenant and user are created
+      // Don't fail the whole process for subscription errors
     }
 
-    // Return the created tenant with user info
-    const responseTenant = {
-      ...tenant,
-      status: 'trial', // Default status
-      users_count: 1,
-      total_sales: 0,
-      total_products: 0,
-      total_customers: 0,
-      subscription: {
-        plan_name: 'Trial Plan',
-        status: 'trial',
-        expires_at: null,
-        trial_ends_at: trialEndsAt.toISOString()
+    return NextResponse.json({
+      success: true,
+      tenant,
+      user: {
+        id: authData.user.id,
+        email: admin_email,
+        name: admin_name,
+        role: 'tenant_admin'
       }
-    };
-
-    return NextResponse.json(responseTenant, { status: 201 });
+    });
 
   } catch (error) {
-    console.error('Admin tenant creation API error:', error);
+    console.error('Admin tenant creation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

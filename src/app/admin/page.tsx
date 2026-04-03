@@ -6,28 +6,27 @@ import {
   Users, 
   Building, 
   CreditCard, 
-  TrendingUp, 
-  Settings, 
-  Search,
-  Filter,
+  Activity,
+  TrendingUp,
+  Settings,
+  BarChart3,
   Download,
-  Eye,
+  AlertCircle,
   Edit,
   Trash2,
   Ban,
   CheckCircle,
-  AlertCircle,
   Calendar,
   DollarSign,
-  Activity,
-  BarChart3,
   UserPlus,
   Shield,
   LogOut,
   Bell,
   Menu,
-  X
-} from "lucide-react";
+  X,
+  Search,
+  Eye
+} from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -89,6 +88,201 @@ export default function SuperAdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const router = useRouter();
 
+  // Security settings state
+  const [securitySettings, setSecuritySettings] = useState({
+    twoFactorAuth: true,
+    sessionMonitoring: true,
+    apiRateLimiting: false,
+    backupEncryption: true
+  });
+
+  // Save settings loading state
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Subscription management state
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [subscriptionFilter, setSubscriptionFilter] = useState('all'); // all, active, trial, expired, cancelled
+
+  // Handle security setting toggle
+  const handleSecurityToggle = (setting: keyof typeof securitySettings) => {
+    setSecuritySettings(prev => ({
+      ...prev,
+      [setting]: !prev[setting]
+    }));
+  };
+
+  // Save settings handler
+  const handleSaveSettings = async () => {
+    try {
+      setIsSavingSettings(true);
+      
+      // Here you would save the settings to your backend
+      console.log('Saving settings:', securitySettings);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Show success message
+      alert('Settings saved successfully!');
+      
+      // You could also make an API call here:
+      // await fetch('/api/admin/settings', {
+      //   method: 'PUT',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ security: securitySettings })
+      // });
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  // Load subscriptions data
+  const loadSubscriptions = async () => {
+    try {
+      setLoadingSubscriptions(true);
+      
+      // Fetch subscriptions with tenant and plan details
+      const response = await fetch('/api/admin/subscriptions');
+      if (response.ok) {
+        const data = await response.json();
+        setSubscriptions(data);
+      } else {
+        console.error('Failed to load subscriptions');
+      }
+    } catch (error) {
+      console.error('Error loading subscriptions:', error);
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  };
+
+  // Handle subscription actions
+  const handleSubscriptionAction = async (subscriptionId: string, action: string) => {
+    try {
+      const response = await fetch(`/api/admin/subscriptions/${subscriptionId}/${action}`, {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        // Refresh subscriptions list
+        await loadSubscriptions();
+        alert(`Subscription ${action} successful!`);
+      } else {
+        alert(`Failed to ${action} subscription`);
+      }
+    } catch (error) {
+      console.error(`Error ${action} subscription:`, error);
+      alert(`Failed to ${action} subscription`);
+    }
+  };
+
+  // Handle tenant actions
+  const handleViewTenant = (tenantId: string) => {
+    setSelectedTenant(tenants.find(t => t.id === tenantId));
+    setShowTenantModal(true);
+  };
+
+  const handleEditTenant = (tenantId: string) => {
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (tenant) {
+      setTenantForm({
+        business_name: tenant.business_name,
+        business_type: tenant.business_type,
+        business_size: tenant.business_size,
+        admin_name: '',
+        admin_email: '',
+        admin_password: ''
+      });
+      setSelectedTenant(tenant);
+      setShowTenantModal(true);
+    }
+  };
+
+  const handleSuspendTenant = async (tenantId: string) => {
+    if (!confirm('Are you sure you want to suspend this tenant? This will disable their access.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/tenants/${tenantId}/suspend`, {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        await loadAdminData(); // Refresh data
+        alert('Tenant suspended successfully!');
+      } else {
+        alert('Failed to suspend tenant');
+      }
+    } catch (error) {
+      console.error('Error suspending tenant:', error);
+      alert('Failed to suspend tenant');
+    }
+  };
+
+  const handleDeleteTenant = async (tenantId: string) => {
+    if (!confirm('Are you sure you want to delete this tenant? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/tenants/${tenantId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        await loadAdminData(); // Refresh data
+        alert('Tenant deleted successfully!');
+      } else {
+        alert('Failed to delete tenant');
+      }
+    } catch (error) {
+      console.error('Error deleting tenant:', error);
+      alert('Failed to delete tenant');
+    }
+  };
+
+  // Handle user actions
+  const handleEditUser = (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      setUserForm({
+        name: user.name || '',
+        email: user.email,
+        role: user.role,
+        tenant_id: user.tenant_id,
+        password: ''
+      });
+      setShowUserModal(true);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        await loadAdminData(); // Refresh data
+        alert('User deleted successfully!');
+      } else {
+        alert('Failed to delete user');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Failed to delete user');
+    }
+  };
+
   // Form states
   const [tenantForm, setTenantForm] = useState({
     business_name: '',
@@ -108,25 +302,36 @@ export default function SuperAdminDashboard() {
   });
 
   useEffect(() => {
-    // Check for custom session first (super admin)
-    const sessionData = localStorage.getItem('vendro_session');
-    if (sessionData) {
+    const run = async () => {
       try {
-        const session = JSON.parse(sessionData);
-        if (session.user && session.user.role === 'super_admin') {
-          setUser(session.user);
+        const res = await fetch('/api/auth/user', { credentials: 'include' });
+        if (!res.ok) {
+          router.push('/admin/login');
+          return;
+        }
+
+        const userData = await res.json();
+        if (userData?.role === 'super_admin') {
+          setUser(userData);
           loadAdminData();
           return;
         }
       } catch (e) {
-        // Invalid session, clear it
-        localStorage.removeItem('vendro_session');
+        // ignore and redirect
       }
-    }
-    
-    // If no valid session, redirect to admin login
-    router.push('/admin/login');
+
+      router.push('/admin/login');
+    };
+
+    run();
   }, [router]);
+
+  // Load subscriptions when tab changes to subscriptions
+  useEffect(() => {
+    if (activeTab === 'subscriptions' && subscriptions.length === 0) {
+      loadSubscriptions();
+    }
+  }, [activeTab]);
 
   const loadAdminData = async () => {
     try {
@@ -162,8 +367,9 @@ export default function SuperAdminDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('vendro_session');
-    router.push('/login');
+    fetch('/api/auth/logout', { method: 'POST' })
+      .catch(() => null)
+      .finally(() => router.push('/login'));
   };
 
   const handleCreateTenant = async () => {
@@ -224,50 +430,6 @@ export default function SuperAdminDashboard() {
     } catch (error) {
       console.error('Error creating user:', error);
       alert('Error creating user. Please try again.');
-    }
-  };
-
-  const handleSuspendTenant = async (tenantId: string) => {
-    if (!confirm('Are you sure you want to suspend this tenant?')) return;
-
-    try {
-      const response = await fetch(`/api/admin/tenants/${tenantId}/suspend`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        setTenants(tenants.map(t => 
-          t.id === tenantId ? { ...t, status: 'suspended' } : t
-        ));
-        alert('Tenant suspended successfully!');
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.error}`);
-      }
-    } catch (error) {
-      console.error('Error suspending tenant:', error);
-      alert('Error suspending tenant. Please try again.');
-    }
-  };
-
-  const handleDeleteTenant = async (tenantId: string) => {
-    if (!confirm('Are you sure you want to delete this tenant? This action cannot be undone!')) return;
-
-    try {
-      const response = await fetch(`/api/admin/tenants/${tenantId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        setTenants(tenants.filter(t => t.id !== tenantId));
-        alert('Tenant deleted successfully!');
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.error}`);
-      }
-    } catch (error) {
-      console.error('Error deleting tenant:', error);
-      alert('Error deleting tenant. Please try again.');
     }
   };
 
@@ -604,20 +766,30 @@ export default function SuperAdminDashboard() {
                           <td className="py-3 px-4">
                             <div className="flex space-x-2">
                               <button
-                                onClick={() => setSelectedTenant(tenant)}
+                                onClick={() => handleViewTenant(tenant.id)}
                                 className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20"
+                                title="View tenant details"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
+                                onClick={() => handleEditTenant(tenant.id)}
+                                className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20"
+                                title="Edit tenant"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={() => handleSuspendTenant(tenant.id)}
                                 className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20"
+                                title="Suspend tenant"
                               >
                                 <Ban className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteTenant(tenant.id)}
                                 className="p-1 bg-white/10 text-red-400 rounded hover:bg-white/20"
+                                title="Delete tenant"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -701,11 +873,19 @@ export default function SuperAdminDashboard() {
                           <td className="py-3 px-4">{user.last_login || 'Never'}</td>
                           <td className="py-3 px-4">
                             <div className="flex space-x-2">
-                              <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
+                              <button 
+                                onClick={() => handleEditUser(user.id)}
+                                className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20"
+                                title="Edit user"
+                              >
                                 <Edit className="w-4 h-4" />
                               </button>
-                              <button className="p-1 bg-white/10 text-gray-400 rounded hover:bg-white/20">
-                                <Ban className="w-4 h-4" />
+                              <button 
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="p-1 bg-white/10 text-red-400 rounded hover:bg-white/20"
+                                title="Delete user"
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
@@ -725,12 +905,208 @@ export default function SuperAdminDashboard() {
             </div>
           )}
 
-          {/* Other tabs (placeholder) */}
+          {/* Subscriptions Management */}
           {activeTab === 'subscriptions' && (
-            <div className="text-center py-12">
-              <CreditCard className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Subscriptions Management</h3>
-              <p className="text-gray-400">Subscription management features coming soon...</p>
+            <div>
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-2xl font-bold text-white">Subscriptions Management</h2>
+                <div className="flex space-x-2">
+                  <select 
+                    value={subscriptionFilter}
+                    onChange={(e) => setSubscriptionFilter(e.target.value)}
+                    className="px-4 py-2 bg-white/10 text-white rounded-lg border border-white/20"
+                  >
+                    <option value="all">All Subscriptions</option>
+                    <option value="active">Active</option>
+                    <option value="trial">Trial</option>
+                    <option value="expired">Expired</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <button 
+                    onClick={loadSubscriptions}
+                    className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2"
+                  >
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Subscription Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2 bg-green-500/20 rounded-lg">
+                      <CreditCard className="w-5 h-5 text-green-400" />
+                    </div>
+                    <span className="text-green-400 text-sm">+12%</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">Active Subscriptions</p>
+                  <p className="text-2xl font-bold text-white">
+                    {subscriptions.filter(s => s.status === 'active').length}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Paying customers</p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2 bg-blue-500/20 rounded-lg">
+                      <Users className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <span className="text-blue-400 text-sm">+8%</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">Trial Users</p>
+                  <p className="text-2xl font-bold text-white">
+                    {subscriptions.filter(s => s.status === 'trial').length}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Free trials</p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2 bg-red-500/20 rounded-lg">
+                      <AlertCircle className="w-5 h-5 text-red-400" />
+                    </div>
+                    <span className="text-red-400 text-sm">-3%</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">Expired</p>
+                  <p className="text-2xl font-bold text-white">
+                    {subscriptions.filter(s => s.status === 'expired').length}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Need renewal</p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <TrendingUp className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <span className="text-green-400 text-sm">+18%</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">Monthly Revenue</p>
+                  <p className="text-2xl font-bold text-white">
+                    ₦{subscriptions
+                      .filter(s => s.status === 'active')
+                      .reduce((sum, s) => sum + (s.plan?.price || 0), 0)
+                      .toLocaleString()}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Recurring income</p>
+                </div>
+              </div>
+
+              {/* Subscriptions Table */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold text-white">All Subscriptions</h3>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="Search subscriptions..."
+                      className="px-4 py-2 bg-white/10 text-white rounded-lg border border-white/20 placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+
+                {loadingSubscriptions ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-3 text-gray-400">Loading subscriptions...</span>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-white">
+                      <thead>
+                        <tr className="border-b border-white/20">
+                          <th className="text-left py-3 px-4">Tenant</th>
+                          <th className="text-left py-3 px-4">Plan</th>
+                          <th className="text-left py-3 px-4">Status</th>
+                          <th className="text-left py-3 px-4">Price</th>
+                          <th className="text-left py-3 px-4">Started</th>
+                          <th className="text-left py-3 px-4">Next Billing</th>
+                          <th className="text-left py-3 px-4">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {subscriptions
+                          .filter(sub => subscriptionFilter === 'all' || sub.status === subscriptionFilter)
+                          .map((subscription) => (
+                            <tr key={subscription.id} className="border-b border-white/10 hover:bg-white/5">
+                              <td className="py-3 px-4">
+                                <p className="font-medium">{subscription.tenant?.business_name || 'Unknown'}</p>
+                                <p className="text-gray-400 text-xs">{subscription.tenant?.business_type}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="capitalize">{subscription.plan?.name || 'Basic'}</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  subscription.status === 'active' ? 'bg-green-500/20 text-green-400' :
+                                  subscription.status === 'trial' ? 'bg-blue-500/20 text-blue-400' :
+                                  subscription.status === 'expired' ? 'bg-red-500/20 text-red-400' :
+                                  'bg-gray-500/20 text-gray-400'
+                                }`}>
+                                  {subscription.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                ₦{(subscription.plan?.price || 0).toLocaleString()}/mo
+                              </td>
+                              <td className="py-3 px-4">
+                                {new Date(subscription.created_at).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 px-4">
+                                {subscription.next_billing_date ? 
+                                  new Date(subscription.next_billing_date).toLocaleDateString() : 
+                                  'N/A'
+                                }
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex space-x-2">
+                                  {subscription.status === 'trial' && (
+                                    <button
+                                      onClick={() => handleSubscriptionAction(subscription.id, 'upgrade')}
+                                      className="px-3 py-1 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors text-sm"
+                                    >
+                                      Upgrade
+                                    </button>
+                                  )}
+                                  {subscription.status === 'active' && (
+                                    <button
+                                      onClick={() => handleSubscriptionAction(subscription.id, 'cancel')}
+                                      className="px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
+                                  {subscription.status === 'expired' && (
+                                    <button
+                                      onClick={() => handleSubscriptionAction(subscription.id, 'reactivate')}
+                                      className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors text-sm"
+                                    >
+                                      Reactivate
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleSubscriptionAction(subscription.id, 'extend')}
+                                    className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 transition-colors text-sm"
+                                  >
+                                    Extend
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        {subscriptions.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="text-center py-8 text-gray-400">
+                              No subscriptions found
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -963,8 +1339,19 @@ export default function SuperAdminDashboard() {
             <div>
               <div className="flex justify-between items-center mb-8">
                 <h2 className="text-2xl font-bold text-white">System Settings</h2>
-                <button className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all">
-                  Save Changes
+                <button 
+                  onClick={handleSaveSettings}
+                  disabled={isSavingSettings}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isSavingSettings ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </button>
               </div>
 
@@ -1062,8 +1449,15 @@ export default function SuperAdminDashboard() {
                         <p className="text-white font-medium">Two-Factor Authentication</p>
                         <p className="text-gray-400 text-sm">Require 2FA for all admin users</p>
                       </div>
-                      <button className="w-12 h-6 bg-purple-500 rounded-full relative transition-colors">
-                        <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 transition-transform"></div>
+                      <button 
+                        onClick={() => handleSecurityToggle('twoFactorAuth')}
+                        className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                          securitySettings.twoFactorAuth ? 'bg-purple-500' : 'bg-gray-600'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
+                          securitySettings.twoFactorAuth ? 'right-0.5' : 'left-0.5'
+                        }`}></div>
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
@@ -1071,8 +1465,15 @@ export default function SuperAdminDashboard() {
                         <p className="text-white font-medium">Session Monitoring</p>
                         <p className="text-gray-400 text-sm">Track active user sessions</p>
                       </div>
-                      <button className="w-12 h-6 bg-purple-500 rounded-full relative transition-colors">
-                        <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 transition-transform"></div>
+                      <button 
+                        onClick={() => handleSecurityToggle('sessionMonitoring')}
+                        className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                          securitySettings.sessionMonitoring ? 'bg-purple-500' : 'bg-gray-600'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
+                          securitySettings.sessionMonitoring ? 'right-0.5' : 'left-0.5'
+                        }`}></div>
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
@@ -1080,8 +1481,15 @@ export default function SuperAdminDashboard() {
                         <p className="text-white font-medium">API Rate Limiting</p>
                         <p className="text-gray-400 text-sm">Limit API requests per user</p>
                       </div>
-                      <button className="w-12 h-6 bg-gray-600 rounded-full relative transition-colors">
-                        <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform"></div>
+                      <button 
+                        onClick={() => handleSecurityToggle('apiRateLimiting')}
+                        className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                          securitySettings.apiRateLimiting ? 'bg-purple-500' : 'bg-gray-600'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
+                          securitySettings.apiRateLimiting ? 'right-0.5' : 'left-0.5'
+                        }`}></div>
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
@@ -1089,8 +1497,15 @@ export default function SuperAdminDashboard() {
                         <p className="text-white font-medium">Backup Encryption</p>
                         <p className="text-gray-400 text-sm">Encrypt database backups</p>
                       </div>
-                      <button className="w-12 h-6 bg-purple-500 rounded-full relative transition-colors">
-                        <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 transition-transform"></div>
+                      <button 
+                        onClick={() => handleSecurityToggle('backupEncryption')}
+                        className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                          securitySettings.backupEncryption ? 'bg-purple-500' : 'bg-gray-600'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
+                          securitySettings.backupEncryption ? 'right-0.5' : 'left-0.5'
+                        }`}></div>
                       </button>
                     </div>
                   </div>

@@ -15,8 +15,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/currency";
 import { useAuthStore } from "@/lib/auth-store";
-import { OfflineDataService } from "@/lib/offline-data-service";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { UserService, type User as TenantUser } from "@/lib/user-service";
 
 interface Product {
   id: string;
@@ -48,6 +48,7 @@ const categories = [
 export default function ProductsPage() {
   const { user, isAuthenticated, isOfflineMode } = useAuthStore();
   const [products, setProducts] = useState<Product[]>([]);
+  const [currentUser, setCurrentUser] = useState<TenantUser | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showModal, setShowModal] = useState(false);
@@ -57,14 +58,25 @@ export default function ProductsPage() {
 
   // Load products with offline support
   useEffect(() => {
-    loadProducts();
+    (async () => {
+      const u = await UserService.getCurrentUser();
+      setCurrentUser(u);
+      await loadProducts(u);
+    })();
   }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = async (u?: TenantUser | null) => {
     try {
       setLoading(true);
-      const productsData = await OfflineDataService.fetchProducts();
-      setProducts(productsData || []);
+      const effectiveUser = u ?? currentUser ?? (await UserService.getCurrentUser());
+      if (!effectiveUser) throw new Error("Not authenticated");
+
+      const res = await fetch(`/api/products?tenant_id=${effectiveUser.tenant_id}`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load products");
+      setProducts(data || []);
     } catch (error) {
       console.error("Error loading products:", error);
       alert("Failed to load products");
@@ -170,19 +182,19 @@ export default function ProductsPage() {
       console.log("Product data being saved:", productData);
 
       if (editingProduct) {
-        // Update existing product
-        const updatedProduct = await OfflineDataService.saveProduct({
-          ...productData,
-          id: editingProduct.id,
-          updated_at: new Date().toISOString(),
+        const res = await fetch("/api/products", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            id: editingProduct.id,
+            ...productData,
+            updated_at: new Date().toISOString(),
+          }),
         });
-
-        // Update local state immediately for better UX
-        setProducts(
-          products.map((p) =>
-            p.id === editingProduct.id ? { ...p, ...updatedProduct } : p
-          )
-        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to update product");
+        setProducts(products.map((p) => (p.id === editingProduct.id ? data : p)));
 
         if (!isOfflineMode) {
           alert("Product updated successfully");
@@ -190,15 +202,21 @@ export default function ProductsPage() {
           alert("Product changes will be synced when online");
         }
       } else {
-        // Add new product
-        const newProduct = await OfflineDataService.saveProduct({
-          ...productData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+        if (!currentUser) throw new Error("Not authenticated");
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ...productData,
+            tenant_id: currentUser.tenant_id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
         });
-
-        // Update local state immediately for better UX
-        setProducts([...products, newProduct]);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to add product");
+        setProducts([...products, data]);
 
         if (!isOfflineMode) {
           alert("Product added successfully");
@@ -224,17 +242,12 @@ export default function ProductsPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting product:', error);
-        alert('Failed to delete product');
-        return;
-      }
-
+      const res = await fetch(`/api/products?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete product");
       await loadProducts(); // Reload products
     } catch (error) {
       console.error('Error deleting product:', error);
@@ -243,7 +256,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin"]}>
+    <ProtectedRoute allowedRoles={["tenant_admin", "manager", "super_admin"]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
